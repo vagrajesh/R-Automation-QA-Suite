@@ -1,10 +1,4 @@
-import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { useState } from 'react';
 
 interface TestCase {
   id: string;
@@ -24,49 +18,98 @@ interface TestCase {
   estimatedExecutionTime: string;
 }
 
+// Mock test cases data
+const mockTestCases: TestCase[] = [
+  {
+    id: '1',
+    testCaseId: 'TC-001',
+    module: 'Authentication',
+    testCaseTitle: 'User Login with Valid Credentials',
+    testCaseDescription: 'Verify that users can successfully login with valid email and password',
+    preconditions: 'User account must exist in the system',
+    testSteps: '1. Navigate to login page\n2. Enter valid email\n3. Enter valid password\n4. Click Login button\n5. Verify redirect to dashboard',
+    expectedResults: 'User is logged in successfully and redirected to dashboard',
+    priority: 'P1',
+    testType: 'Functional',
+    riskLevel: 'Critical',
+    linkedUserStories: ['US-001', 'US-002'],
+    sourceCitations: ['REQ-AUTH-001'],
+    complianceNotes: 'Must comply with OWASP authentication standards',
+    estimatedExecutionTime: '5 minutes',
+  },
+  {
+    id: '2',
+    testCaseId: 'TC-002',
+    module: 'Authentication',
+    testCaseTitle: 'User Login with Invalid Credentials',
+    testCaseDescription: 'Verify that login fails with invalid credentials',
+    preconditions: 'User account must exist in the system',
+    testSteps: '1. Navigate to login page\n2. Enter invalid email\n3. Enter invalid password\n4. Click Login button\n5. Verify error message',
+    expectedResults: 'Error message is displayed, user is not logged in',
+    priority: 'P1',
+    testType: 'Functional',
+    riskLevel: 'Critical',
+    linkedUserStories: ['US-001'],
+    sourceCitations: ['REQ-AUTH-002'],
+    complianceNotes: 'Must provide security warnings',
+    estimatedExecutionTime: '5 minutes',
+  },
+  {
+    id: '3',
+    testCaseId: 'TC-003',
+    module: 'User Management',
+    testCaseTitle: 'Create New User Account',
+    testCaseDescription: 'Verify that new user accounts can be created successfully',
+    preconditions: 'Admin user must be logged in',
+    testSteps: '1. Navigate to user management\n2. Click Create User\n3. Fill in user details\n4. Set password\n5. Click Save',
+    expectedResults: 'New user account is created and visible in user list',
+    priority: 'P2',
+    testType: 'Functional',
+    riskLevel: 'High',
+    linkedUserStories: ['US-005'],
+    sourceCitations: ['REQ-USER-001'],
+    complianceNotes: 'Password must meet complexity requirements',
+    estimatedExecutionTime: '10 minutes',
+  },
+  {
+    id: '4',
+    testCaseId: 'TC-004',
+    module: 'API',
+    testCaseTitle: 'GET /api/users Endpoint',
+    testCaseDescription: 'Verify GET users endpoint returns correct data',
+    preconditions: 'API server must be running, valid authentication token required',
+    testSteps: '1. Prepare authorization header\n2. Send GET request to /api/users\n3. Verify response status code\n4. Verify response body structure',
+    expectedResults: 'Response code 200, JSON array of users returned',
+    priority: 'P1',
+    testType: 'Integration',
+    riskLevel: 'High',
+    linkedUserStories: ['US-010'],
+    sourceCitations: ['API-SPEC-001'],
+    complianceNotes: 'Must return only authorized user data',
+    estimatedExecutionTime: '8 minutes',
+  },
+  {
+    id: '5',
+    testCaseId: 'TC-005',
+    module: 'Dashboard',
+    testCaseTitle: 'Dashboard Load Performance',
+    testCaseDescription: 'Verify dashboard loads within acceptable time',
+    preconditions: 'User must be logged in',
+    testSteps: '1. Log in to application\n2. Measure page load time\n3. Verify all widgets load\n4. Check performance metrics',
+    expectedResults: 'Dashboard loads in less than 3 seconds',
+    priority: 'P2',
+    testType: 'Functional',
+    riskLevel: 'Medium',
+    linkedUserStories: ['US-015'],
+    sourceCitations: ['REQ-PERF-001'],
+    complianceNotes: 'Must meet performance SLA',
+    estimatedExecutionTime: '15 minutes',
+  },
+];
+
 export function TestCases() {
-  const [testCases, setTestCases] = useState<TestCase[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [testCases] = useState<TestCase[]>(mockTestCases);
   const [selectedTestCase, setSelectedTestCase] = useState<TestCase | null>(null);
-
-  useEffect(() => {
-    fetchTestCases();
-  }, []);
-
-  const fetchTestCases = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('test_cases')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const formattedData = (data || []).map((item: any) => ({
-        id: item.id,
-        testCaseId: item.test_case_id,
-        module: item.module,
-        testCaseTitle: item.test_case_title,
-        testCaseDescription: item.test_case_description,
-        preconditions: item.preconditions,
-        testSteps: item.test_steps,
-        expectedResults: item.expected_results,
-        priority: item.priority,
-        testType: item.test_type,
-        riskLevel: item.risk_level,
-        linkedUserStories: item.linked_user_stories || [],
-        sourceCitations: item.source_citations || [],
-        complianceNotes: item.compliance_notes,
-        estimatedExecutionTime: item.estimated_execution_time,
-      }));
-
-      setTestCases(formattedData);
-    } catch (error) {
-      console.error('Error fetching test cases:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -87,13 +130,7 @@ export function TestCases() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+
 
   if (testCases.length === 0) {
     return (

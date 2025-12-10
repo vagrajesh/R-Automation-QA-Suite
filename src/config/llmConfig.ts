@@ -1,0 +1,341 @@
+export type LLMProvider = 'openai' | 'groq' | 'azure-openai' | 'claude' | 'testleaf';
+
+export interface LLMModel {
+  id: string;
+  name: string;
+  description: string;
+  contextWindow?: number; // tokens
+  costPer1kTokens?: {
+    input: number;
+    output: number;
+  };
+}
+
+export interface LLMConfig {
+  provider: LLMProvider;
+  apiKey: string;
+  endpoint: string;
+  model: string;
+  deploymentName?: string;
+  apiVersion?: string;
+}
+
+export interface LLMProviderConfig {
+  id: LLMProvider;
+  name: string;
+  description: string;
+  icon: string;
+  models: LLMModel[];
+  defaultModel: string;
+  endpoint: string;
+  apiKeyLabel: string;
+  docLink: string;
+  additionalFields?: {
+    name: string;
+    label: string;
+    placeholder: string;
+    required: boolean;
+  }[];
+}
+
+export const LLM_MODELS: Record<LLMProvider, LLMModel[]> = {
+  openai: [
+    {
+      id: 'gpt-4-turbo',
+      name: 'GPT-4 Turbo',
+      description: 'Latest GPT-4 with improved instruction following',
+      contextWindow: 128000,
+      costPer1kTokens: { input: 0.01, output: 0.03 },
+    },
+    {
+      id: 'gpt-4',
+      name: 'GPT-4',
+      description: 'Most capable model for complex reasoning',
+      contextWindow: 8192,
+      costPer1kTokens: { input: 0.03, output: 0.06 },
+    },
+    {
+      id: 'gpt-3.5-turbo',
+      name: 'GPT-3.5 Turbo',
+      description: 'Fast and efficient for most tasks',
+      contextWindow: 4096,
+      costPer1kTokens: { input: 0.0015, output: 0.002 },
+    },
+    {
+      id: 'gpt-4o',
+      name: 'GPT-4o',
+      description: 'Omni model - multimodal capabilities',
+      contextWindow: 128000,
+      costPer1kTokens: { input: 0.005, output: 0.015 },
+    },
+  ],
+  groq: [
+    {
+      id: 'mixtral-8x7b-32768',
+      name: 'Mixtral 8x7B',
+      description: 'Fast, open-source mixture of experts model',
+      contextWindow: 32768,
+    },
+    {
+      id: 'llama2-70b-4096',
+      name: 'Llama 2 70B',
+      description: "Meta's large language model",
+      contextWindow: 4096,
+    },
+    {
+      id: 'gemma-7b-it',
+      name: 'Gemma 7B',
+      description: "Google's instruction-tuned model",
+      contextWindow: 8192,
+    },
+    {
+      id: 'llama-3-70b',
+      name: 'Llama 3 70B',
+      description: 'Latest Llama 3 model',
+      contextWindow: 8192,
+    },
+  ],
+  'azure-openai': [
+    {
+      id: 'gpt-4',
+      name: 'GPT-4',
+      description: 'Azure-hosted GPT-4 model',
+      contextWindow: 8192,
+    },
+    {
+      id: 'gpt-4-32k',
+      name: 'GPT-4 32K',
+      description: 'GPT-4 with extended context',
+      contextWindow: 32768,
+    },
+    {
+      id: 'gpt-35-turbo',
+      name: 'GPT-3.5 Turbo',
+      description: 'Azure-hosted GPT-3.5 Turbo',
+      contextWindow: 4096,
+    },
+    {
+      id: 'gpt-4-turbo',
+      name: 'GPT-4 Turbo',
+      description: 'Azure-hosted GPT-4 Turbo with vision',
+      contextWindow: 128000,
+    },
+  ],
+  claude: [
+    {
+      id: 'claude-3-opus-20240229',
+      name: 'Claude 3 Opus',
+      description: 'Most intelligent model - best for complex tasks',
+      contextWindow: 200000,
+      costPer1kTokens: { input: 0.015, output: 0.075 },
+    },
+    {
+      id: 'claude-3-sonnet-20240229',
+      name: 'Claude 3 Sonnet',
+      description: 'Balanced performance and speed',
+      contextWindow: 200000,
+      costPer1kTokens: { input: 0.003, output: 0.015 },
+    },
+    {
+      id: 'claude-3-haiku-20240307',
+      name: 'Claude 3 Haiku',
+      description: 'Fastest and most compact',
+      contextWindow: 200000,
+      costPer1kTokens: { input: 0.00025, output: 0.00125 },
+    },
+    {
+      id: 'claude-2.1',
+      name: 'Claude 2.1',
+      description: 'Previous version with 100k context',
+      contextWindow: 100000,
+      costPer1kTokens: { input: 0.008, output: 0.024 },
+    },
+  ],
+  testleaf: [
+    {
+      id: 'testleaf-sft',
+      name: 'TestLeaf SFT',
+      description: 'Specialized fine-tuned model for QA automation',
+      contextWindow: 8192,
+    },
+    {
+      id: 'testleaf-pro',
+      name: 'TestLeaf Pro',
+      description: 'Enhanced model with better test case generation',
+      contextWindow: 16384,
+    },
+    {
+      id: 'testleaf-enterprise',
+      name: 'TestLeaf Enterprise',
+      description: 'Enterprise model with advanced analytics',
+      contextWindow: 32768,
+    },
+  ],
+};
+
+export const LLM_PROVIDERS: Record<LLMProvider, LLMProviderConfig> = {
+  openai: {
+    id: 'openai',
+    name: 'OpenAI',
+    description: 'GPT-4, GPT-3.5 Turbo, and other OpenAI models',
+    icon: '🤖',
+    models: LLM_MODELS.openai,
+    defaultModel: 'gpt-4-turbo',
+    endpoint: 'https://api.openai.com/v1',
+    apiKeyLabel: 'OpenAI API Key (sk-...)',
+    docLink: 'https://platform.openai.com/docs',
+  },
+  groq: {
+    id: 'groq',
+    name: 'Groq',
+    description: 'Fast inference with Mixtral, Llama, and other open models',
+    icon: '⚡',
+    models: LLM_MODELS.groq,
+    defaultModel: 'mixtral-8x7b-32768',
+    endpoint: 'https://api.groq.com/openai/v1',
+    apiKeyLabel: 'Groq API Key',
+    docLink: 'https://console.groq.com/docs',
+  },
+  'azure-openai': {
+    id: 'azure-openai',
+    name: 'Azure OpenAI',
+    description: 'Enterprise OpenAI models hosted on Azure',
+    icon: '☁️',
+    models: LLM_MODELS['azure-openai'],
+    defaultModel: 'gpt-4',
+    endpoint: 'https://your-resource.openai.azure.com/',
+    apiKeyLabel: 'Azure API Key',
+    docLink: 'https://learn.microsoft.com/azure/ai-services/openai/',
+    additionalFields: [
+      {
+        name: 'deploymentName',
+        label: 'Deployment Name',
+        placeholder: 'your-deployment-name',
+        required: true,
+      },
+      {
+        name: 'apiVersion',
+        label: 'API Version',
+        placeholder: '2024-02-15-preview',
+        required: true,
+      },
+    ],
+  },
+  claude: {
+    id: 'claude',
+    name: 'Claude',
+    description: 'Anthropic Claude models - Claude 3 Opus, Sonnet, Haiku',
+    icon: '🧠',
+    models: LLM_MODELS.claude,
+    defaultModel: 'claude-3-opus-20240229',
+    endpoint: 'https://api.anthropic.com',
+    apiKeyLabel: 'Claude API Key (sk-ant-...)',
+    docLink: 'https://docs.anthropic.com',
+  },
+  testleaf: {
+    id: 'testleaf',
+    name: 'TestLeaf',
+    description: 'TestLeaf SFT - Specialized for QA test automation',
+    icon: '🍃',
+    models: LLM_MODELS.testleaf,
+    defaultModel: 'testleaf-sft',
+    endpoint: 'https://api.testleaf.com/v1',
+    apiKeyLabel: 'TestLeaf API Key',
+    docLink: 'https://testleaf.com/docs',
+  },
+};
+
+/**
+ * Get provider configuration by provider ID
+ * @param provider - The LLM provider ID
+ * @returns Provider configuration
+ */
+export function getLLMProviderConfig(provider: LLMProvider): LLMProviderConfig {
+  return LLM_PROVIDERS[provider];
+}
+
+/**
+ * Get all available models for a provider
+ * @param provider - The LLM provider ID
+ * @returns Array of available models
+ */
+export function getModelsByProvider(provider: LLMProvider): LLMModel[] {
+  return LLM_PROVIDERS[provider].models;
+}
+
+/**
+ * Get specific model information
+ * @param provider - The LLM provider ID
+ * @param modelId - The model ID
+ * @returns Model information or undefined if not found
+ */
+export function getModelInfo(provider: LLMProvider, modelId: string): LLMModel | undefined {
+  return LLM_MODELS[provider].find((m) => m.id === modelId);
+}
+
+/**
+ * Validate if a model exists for a provider
+ * @param provider - The LLM provider ID
+ * @param modelId - The model ID
+ * @returns true if model exists
+ */
+export function isValidModel(provider: LLMProvider, modelId: string): boolean {
+  return !!getModelInfo(provider, modelId);
+}
+
+/**
+ * Load LLM configurations from environment variables
+ * @returns Partial record of configured providers
+ */
+export function getLLMConfigFromEnv(): Partial<Record<LLMProvider, LLMConfig>> {
+  const configs: Partial<Record<LLMProvider, LLMConfig>> = {};
+
+  if (import.meta.env.VITE_OPENAI_API_KEY) {
+    configs.openai = {
+      provider: 'openai',
+      apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+      endpoint: import.meta.env.VITE_OPENAI_API_ENDPOINT || LLM_PROVIDERS.openai.endpoint,
+      model: import.meta.env.VITE_OPENAI_DEFAULT_MODEL || LLM_PROVIDERS.openai.defaultModel,
+    };
+  }
+
+  if (import.meta.env.VITE_GROQ_API_KEY) {
+    configs.groq = {
+      provider: 'groq',
+      apiKey: import.meta.env.VITE_GROQ_API_KEY,
+      endpoint: import.meta.env.VITE_GROQ_API_ENDPOINT || LLM_PROVIDERS.groq.endpoint,
+      model: import.meta.env.VITE_GROQ_DEFAULT_MODEL || LLM_PROVIDERS.groq.defaultModel,
+    };
+  }
+
+  if (import.meta.env.VITE_AZURE_OPENAI_API_KEY) {
+    configs['azure-openai'] = {
+      provider: 'azure-openai',
+      apiKey: import.meta.env.VITE_AZURE_OPENAI_API_KEY,
+      endpoint: import.meta.env.VITE_AZURE_OPENAI_API_ENDPOINT || LLM_PROVIDERS['azure-openai'].endpoint,
+      model: import.meta.env.VITE_AZURE_OPENAI_DEFAULT_MODEL || LLM_PROVIDERS['azure-openai'].defaultModel,
+      deploymentName: import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT_NAME,
+      apiVersion: import.meta.env.VITE_AZURE_OPENAI_API_VERSION,
+    };
+  }
+
+  if (import.meta.env.VITE_CLAUDE_API_KEY) {
+    configs.claude = {
+      provider: 'claude',
+      apiKey: import.meta.env.VITE_CLAUDE_API_KEY,
+      endpoint: import.meta.env.VITE_CLAUDE_API_ENDPOINT || LLM_PROVIDERS.claude.endpoint,
+      model: import.meta.env.VITE_CLAUDE_DEFAULT_MODEL || LLM_PROVIDERS.claude.defaultModel,
+    };
+  }
+
+  if (import.meta.env.VITE_TESTLEAF_API_KEY) {
+    configs.testleaf = {
+      provider: 'testleaf',
+      apiKey: import.meta.env.VITE_TESTLEAF_API_KEY,
+      endpoint: import.meta.env.VITE_TESTLEAF_API_ENDPOINT || LLM_PROVIDERS.testleaf.endpoint,
+      model: import.meta.env.VITE_TESTLEAF_DEFAULT_MODEL || LLM_PROVIDERS.testleaf.defaultModel,
+    };
+  }
+
+  return configs;
+}

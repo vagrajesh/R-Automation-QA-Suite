@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Brain, Zap, Figma, Settings2 } from 'lucide-react';
+import { Zap, Figma, Settings2 } from 'lucide-react';
+import { LLMSettings } from './LLMSettings';
 
 interface Integration {
   id: string;
@@ -12,16 +13,8 @@ interface Integration {
 }
 
 export function Settings() {
+  const [selectedTab, setSelectedTab] = useState<'llm' | 'other'>('llm');
   const [integrations, setIntegrations] = useState<Integration[]>([
-    {
-      id: 'llm',
-      title: 'LLM Model Integration',
-      description: 'Connect to language models like OpenAI, Claude, or Gemini',
-      icon: <Brain className="w-8 h-8" />,
-      isConnected: false,
-      apiKey: '',
-      provider: 'Open AI',
-    },
     {
       id: 'embedding',
       title: 'Embedding Integration',
@@ -63,7 +56,7 @@ export function Settings() {
     setIntegrations(
       integrations.map((i) =>
         i.id === id
-          ? { ...i, apiKey: tempApiKey, isConnected: !!tempApiKey, ...(id === 'llm' && { provider: tempProvider }) }
+          ? { ...i, apiKey: tempApiKey, isConnected: !!tempApiKey, ...(id !== 'llm' && { provider: tempProvider }) }
           : i
       )
     );
@@ -79,15 +72,53 @@ export function Settings() {
     setEditingId(null);
   };
 
+  // Show LLM Settings when LLM tab is selected
+  if (selectedTab === 'llm') {
+    return (
+      <div className="space-y-6">
+        <div className="flex gap-2 border-b border-slate-200">
+          <button
+            onClick={() => setSelectedTab('llm')}
+            className="px-4 py-2 font-semibold text-blue-600 border-b-2 border-blue-600"
+          >
+            LLM Integration
+          </button>
+          <button
+            onClick={() => setSelectedTab('other')}
+            className="px-4 py-2 font-semibold text-slate-600 hover:text-slate-900"
+          >
+            Other Integrations
+          </button>
+        </div>
+        <LLMSettings />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      <div className="flex gap-2 border-b border-slate-200">
+        <button
+          onClick={() => setSelectedTab('llm')}
+          className="px-4 py-2 font-semibold text-slate-600 hover:text-slate-900"
+        >
+          LLM Integration
+        </button>
+        <button
+          onClick={() => setSelectedTab('other')}
+          className="px-4 py-2 font-semibold text-blue-600 border-b-2 border-blue-600"
+        >
+          Other Integrations
+        </button>
+      </div>
+
       <div>
-        <h3 className="text-2xl font-bold text-slate-900 mb-2">Integrations</h3>
+        <h3 className="text-2xl font-bold text-slate-900 mb-2">Other Integrations</h3>
         <p className="text-slate-600">Configure and manage your external service integrations</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {integrations.map((integration) => (
+        {integrations.slice(1).map((integration) => (
           <div
             key={integration.id}
             className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow"
@@ -106,25 +137,6 @@ export function Settings() {
 
             {editingId === integration.id ? (
               <div className="space-y-4 border-t border-slate-200 pt-4">
-                {integration.id === 'llm' && (
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      LLM Provider
-                    </label>
-                    <select
-                      value={tempProvider}
-                      onChange={(e) => setTempProvider(e.target.value)}
-                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="Open AI">Open AI</option>
-                      <option value="Groq AI">Groq AI</option>
-                      <option value="Claude">Claude</option>
-                      <option value="Azure Open AI">Azure Open AI</option>
-                      <option value="TestLeaf SFT">TestLeaf SFT</option>
-                      <option value="Amazon BedRock">Amazon BedRock</option>
-                    </select>
-                  </div>
-                )}
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
                     API Key / Connection String
@@ -154,12 +166,6 @@ export function Settings() {
               </div>
             ) : (
               <div className="space-y-3 border-t border-slate-200 pt-4">
-                {integration.id === 'llm' && integration.isConnected && integration.provider && (
-                  <div className="bg-slate-50 px-3 py-2 rounded border border-slate-200">
-                    <span className="text-xs font-semibold text-slate-500 uppercase">Provider: </span>
-                    <span className="text-sm font-semibold text-slate-900">{integration.provider}</span>
-                  </div>
-                )}
                 <div className="flex gap-3">
                   {integration.isConnected ? (
                     <>
