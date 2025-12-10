@@ -8,6 +8,7 @@ interface Integration {
   icon: React.ReactNode;
   isConnected: boolean;
   apiKey?: string;
+  provider?: string;
 }
 
 export function Settings() {
@@ -19,6 +20,7 @@ export function Settings() {
       icon: <Brain className="w-8 h-8" />,
       isConnected: false,
       apiKey: '',
+      provider: 'Open AI',
     },
     {
       id: 'embedding',
@@ -48,17 +50,21 @@ export function Settings() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [tempApiKey, setTempApiKey] = useState('');
+  const [tempProvider, setTempProvider] = useState('Open AI');
 
   const handleConnect = (id: string) => {
     setEditingId(id);
     const integration = integrations.find((i) => i.id === id);
     setTempApiKey(integration?.apiKey || '');
+    setTempProvider(integration?.provider || 'Open AI');
   };
 
   const handleSave = (id: string) => {
     setIntegrations(
       integrations.map((i) =>
-        i.id === id ? { ...i, apiKey: tempApiKey, isConnected: !!tempApiKey } : i
+        i.id === id
+          ? { ...i, apiKey: tempApiKey, isConnected: !!tempApiKey, ...(id === 'llm' && { provider: tempProvider }) }
+          : i
       )
     );
     setEditingId(null);
@@ -100,6 +106,25 @@ export function Settings() {
 
             {editingId === integration.id ? (
               <div className="space-y-4 border-t border-slate-200 pt-4">
+                {integration.id === 'llm' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                      LLM Provider
+                    </label>
+                    <select
+                      value={tempProvider}
+                      onChange={(e) => setTempProvider(e.target.value)}
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="Open AI">Open AI</option>
+                      <option value="Groq AI">Groq AI</option>
+                      <option value="Claude">Claude</option>
+                      <option value="Azure Open AI">Azure Open AI</option>
+                      <option value="TestLeaf SFT">TestLeaf SFT</option>
+                      <option value="Amazon BedRock">Amazon BedRock</option>
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
                     API Key / Connection String
@@ -128,13 +153,20 @@ export function Settings() {
                 </div>
               </div>
             ) : (
-              <div className="flex gap-3 border-t border-slate-200 pt-4">
-                {integration.isConnected ? (
-                  <>
-                    <div className="flex-1 flex items-center gap-2">
-                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                      <span className="text-sm font-semibold text-green-700">Connected</span>
-                    </div>
+              <div className="space-y-3 border-t border-slate-200 pt-4">
+                {integration.id === 'llm' && integration.isConnected && integration.provider && (
+                  <div className="bg-slate-50 px-3 py-2 rounded border border-slate-200">
+                    <span className="text-xs font-semibold text-slate-500 uppercase">Provider: </span>
+                    <span className="text-sm font-semibold text-slate-900">{integration.provider}</span>
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  {integration.isConnected ? (
+                    <>
+                      <div className="flex-1 flex items-center gap-2">
+                        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                        <span className="text-sm font-semibold text-green-700">Connected</span>
+                      </div>
                     <button
                       onClick={() => handleConnect(integration.id)}
                       className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-semibold"
@@ -162,6 +194,7 @@ export function Settings() {
                     </button>
                   </>
                 )}
+                </div>
               </div>
             )}
           </div>
