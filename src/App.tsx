@@ -14,9 +14,11 @@ import {
   Menu,
   X,
   Settings as SettingsIcon,
+  List,
 } from 'lucide-react';
 import { RequirementAnalysis } from './components/RequirementAnalysis';
 import { Settings } from './components/Settings';
+import { TestCases } from './components/TestCases';
 
 interface MenuItem {
   id: number;
@@ -82,6 +84,11 @@ const menuItems: MenuItem[] = [
   },
   {
     id: 12,
+    title: 'Test Cases',
+    icon: <List className="w-5 h-5" />,
+  },
+  {
+    id: 13,
     title: 'Settings',
     icon: <SettingsIcon className="w-5 h-5" />,
   },
@@ -140,6 +147,8 @@ function App() {
             {selectedMenu === 1 ? (
               <RequirementAnalysis />
             ) : selectedMenu === 12 ? (
+              <TestCases />
+            ) : selectedMenu === 13 ? (
               <Settings />
             ) : (
               <div className="bg-white rounded-xl shadow-md p-12 border border-slate-200">
