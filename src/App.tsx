@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   FileText,
   TestTubes,
@@ -19,6 +19,10 @@ import {
 import { RequirementAnalysis } from './components/RequirementAnalysis';
 import { Settings } from './components/Settings';
 import { TestCases } from './components/TestCases';
+import { TestCasesGenerator } from './components/TestCasesGenerator';
+import { StatusBadge } from './components/StatusBadge';
+import { llmService } from './services/llmService';
+import { LLM_PROVIDERS, type LLMProvider } from './config/llmConfig';
 
 interface MenuItem {
   id: number;
@@ -97,6 +101,50 @@ const menuItems: MenuItem[] = [
 function App() {
   const [selectedMenu, setSelectedMenu] = useState<number>(1);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [llmStatus, setLlmStatus] = useState<{ provider: LLMProvider | null; isConnected: boolean; isLoading: boolean }>({
+    provider: null,
+    isConnected: false,
+    isLoading: false,
+  });
+  const [serviceNowStatus, setServiceNowStatus] = useState<{ isConnected: boolean; isLoading: boolean }>({
+    isConnected: false,
+    isLoading: false,
+  });
+
+  // Check LLM provider status on component mount and when menu changes
+  useEffect(() => {
+    const checkStatuses = async () => {
+      // Check LLM status
+      const configuredProviders = llmService.getConfiguredProviders();
+      if (configuredProviders.length > 0) {
+        const provider = configuredProviders[0];
+        setLlmStatus((prev) => ({ ...prev, provider, isLoading: true }));
+        
+        const result = await llmService.testConnection(provider);
+        setLlmStatus({
+          provider,
+          isConnected: result.success,
+          isLoading: false,
+        });
+      } else {
+        setLlmStatus({ provider: null, isConnected: false, isLoading: false });
+      }
+
+      // Check ServiceNow status from localStorage (settings)
+      const serviceNowConfig = localStorage.getItem('servicenow_config');
+      const isServiceNowConnected = !!serviceNowConfig;
+      setServiceNowStatus({
+        isConnected: isServiceNowConnected,
+        isLoading: false,
+      });
+    };
+
+    checkStatuses();
+    
+    // Recheck when returning to app (every 30 seconds)
+    const interval = setInterval(checkStatuses, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const selectedItem = menuItems.find((item) => item.id === selectedMenu);
 
@@ -139,13 +187,33 @@ function App() {
             {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
           <h2 className="text-2xl font-bold text-slate-900">{selectedItem?.title}</h2>
-          <div className="w-9" />
+          <div className="flex items-center gap-3">
+            {llmStatus.provider && (
+              <StatusBadge
+                provider={LLM_PROVIDERS[llmStatus.provider]?.name || llmStatus.provider}
+                isConnected={llmStatus.isConnected}
+                isLoading={llmStatus.isLoading}
+              />
+            )}
+            {serviceNowStatus.isConnected && (
+              <StatusBadge
+                provider="ServiceNow"
+                isConnected={serviceNowStatus.isConnected}
+                isLoading={serviceNowStatus.isLoading}
+              />
+            )}
+            {!llmStatus.provider && !serviceNowStatus.isConnected && (
+              <div className="text-xs text-slate-500">No integrations configured</div>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 p-8 overflow-auto">
           <div className="max-w-6xl">
             {selectedMenu === 1 ? (
               <RequirementAnalysis />
+            ) : selectedMenu === 2 ? (
+              <TestCasesGenerator />
             ) : selectedMenu === 12 ? (
               <TestCases />
             ) : selectedMenu === 13 ? (

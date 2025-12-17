@@ -135,25 +135,50 @@ export class LLMService {
       'Content-Type': 'application/json',
     };
 
-    // Set appropriate authorization headers based on provider
-    if (config.provider === 'openai' || config.provider === 'groq') {
+    let url: string;
+    let method = 'GET';
+    let body: string | undefined;
+
+    // Set appropriate authorization headers and URL based on provider
+    if (config.provider === 'openai') {
       headers['Authorization'] = `Bearer ${config.apiKey}`;
+      url = 'https://api.openai.com/v1/models';
+    } else if (config.provider === 'groq') {
+      headers['Authorization'] = `Bearer ${config.apiKey}`;
+      url = 'https://api.groq.com/openai/v1/models';
     } else if (config.provider === 'azure-openai') {
+      // Azure OpenAI requires POST request with message body for testing
       headers['api-key'] = config.apiKey;
+      const apiVersion = config.apiVersion || '2024-02-15-preview';
+      const endpoint = config.endpoint.endsWith('/') ? config.endpoint : `${config.endpoint}/`;
+      url = `${endpoint}openai/deployments/${config.deploymentName || 'test'}/chat/completions?api-version=${apiVersion}`;
+      method = 'POST';
+      body = JSON.stringify({
+        messages: [{ role: 'user', content: 'test' }],
+        max_tokens: 1,
+      });
     } else if (config.provider === 'claude') {
       headers['x-api-key'] = config.apiKey;
       headers['anthropic-version'] = '2023-06-01';
+      url = 'https://api.anthropic.com/v1/models';
     } else if (config.provider === 'testleaf') {
       headers['Authorization'] = `Bearer ${config.apiKey}`;
+      const endpoint = config.endpoint.endsWith('/') ? config.endpoint : `${config.endpoint}/`;
+      url = `${endpoint}models`;
+    } else {
+      throw new Error('Unknown provider');
     }
 
-    const endpoint = config.endpoint.endsWith('/') ? config.endpoint : `${config.endpoint}/`;
-    const url = `${endpoint}models`;
-
-    return fetch(url, {
-      method: 'GET',
+    const fetchOptions: RequestInit = {
+      method,
       headers,
-    });
+    };
+
+    if (body) {
+      fetchOptions.body = body;
+    }
+
+    return fetch(url, fetchOptions);
   }
 
   /**

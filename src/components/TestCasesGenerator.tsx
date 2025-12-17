@@ -1,0 +1,703 @@
+import { useState, useEffect } from 'react';
+import { TestTubes, Sparkles, Copy, Check, AlertCircle, Loader, RefreshCw, ChevronDown } from 'lucide-react';
+import { llmService } from '../services/llmService';
+import { fetchAllStories, type Story } from '../services/integrationService';
+import { LLM_PROVIDERS, getModelsByProvider, type LLMProvider } from '../config/llmConfig';
+
+interface TestData {
+  name: string;
+  short_description: string;
+  description: string;
+  test_type: string;
+  priority: string;
+  state: string;
+}
+
+interface VersionData {
+  version: string;
+  state: string;
+  short_description: string;
+  description: string;
+  priority: string;
+}
+
+interface StepData {
+  order: number;
+  step: string;
+  expected_result: string;
+  test_data: string;
+}
+
+interface GeneratedTestCase {
+  id: string;
+  testData: TestData;
+  versionData: VersionData;
+  stepsData: StepData[];
+}
+
+export function TestCasesGenerator() {
+  const [stories, setStories] = useState<Story[]>([]);
+  const [selectedStory, setSelectedStory] = useState<Story | null>(null);
+  const [loadingStories, setLoadingStories] = useState(false);
+  const [storiesError, setStoriesError] = useState<string | null>(null);
+
+  // Load persisted provider and model from localStorage
+  const getPersistentProvider = (): LLMProvider => {
+    const saved = localStorage.getItem('selected_llm_provider');
+    const configuredProviders = llmService.getConfiguredProviders();
+    
+    if (saved && configuredProviders.includes(saved as LLMProvider)) {
+      return saved as LLMProvider;
+    }
+    return configuredProviders.length > 0 ? configuredProviders[0] : 'openai';
+  };
+
+  const getPersistentModel = (provider: LLMProvider): string => {
+    const saved = localStorage.getItem(`selected_llm_model_${provider}`);
+    const availableModels = getModelsByProvider(provider);
+    
+    if (saved && availableModels.some(m => m.id === saved)) {
+      return saved;
+    }
+    return availableModels[0]?.id || 'gpt-4-turbo';
+  };
+
+  const [selectedProvider, setSelectedProvider] = useState<LLMProvider>(getPersistentProvider());
+  const [selectedModel, setSelectedModel] = useState(getPersistentModel(selectedProvider));
+  const [generatedTestCases, setGeneratedTestCases] = useState<GeneratedTestCase[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [numTestCases, setNumTestCases] = useState(3);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [expandedTestCaseId, setExpandedTestCaseId] = useState<string | null>(null);
+
+  const configuredProviders = llmService.getConfiguredProviders();
+  const availableModels = getModelsByProvider(selectedProvider);
+
+  // Load stories on component mount
+  useEffect(() => {
+    loadStories();
+  }, []);
+
+  // Persist provider selection
+  useEffect(() => {
+    localStorage.setItem('selected_llm_provider', selectedProvider);
+  }, [selectedProvider]);
+
+  // Persist model selection
+  useEffect(() => {
+    localStorage.setItem(`selected_llm_model_${selectedProvider}`, selectedModel);
+  }, [selectedModel, selectedProvider]);
+
+  const loadStories = async () => {
+    setLoadingStories(true);
+    setStoriesError(null);
+
+    try {
+      const fetchedStories = await fetchAllStories();
+      setStories(fetchedStories);
+      if (fetchedStories.length > 0) {
+        setSelectedStory(fetchedStories[0]);
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load stories';
+      setStoriesError(errorMessage);
+    } finally {
+      setLoadingStories(false);
+    }
+  };
+
+  const generateTestCases = async () => {
+    if (!selectedStory) {
+      setError('Please select a story to generate test cases');
+      return;
+    }
+
+    if (configuredProviders.length === 0) {
+      setError('No LLM providers configured. Please configure at least one provider in Settings.');
+      return;
+    }
+
+    const provider = configuredProviders.includes(selectedProvider) ? selectedProvider : configuredProviders[0];
+    const config = llmService.getConfig(provider);
+
+    if (!config) {
+      setError(`Provider ${provider} is not properly configured`);
+      return;
+    }
+
+    setIsGenerating(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const prompt = `You are a QA test case generation expert. Generate ${numTestCases} comprehensive test cases based on the following user story:
+
+STORY ID: ${selectedStory.key}
+TITLE: ${selectedStory.title}
+DESCRIPTION: ${selectedStory.description}
+${selectedStory.acceptanceCriteria ? `ACCEPTANCE CRITERIA:\n${selectedStory.acceptanceCriteria}` : ''}
+STATUS: ${selectedStory.status}
+PRIORITY: ${selectedStory.priority}
+SOURCE: ${selectedStory.source.toUpperCase()}
+
+Generate test cases in the following JSON format with a "test_cases" array:
+
+{
+  "test_cases": [
+    {
+      "testData": {
+        "name": "Test Case Name",
+        "short_description": "Brief description",
+        "description": "Detailed test case description",
+        "test_type": "functional",
+        "priority": "High",
+        "state": "draft"
+      },
+      "versionData": {
+        "version": "1.0",
+        "state": "draft",
+        "short_description": "Brief description",
+        "description": "Version description",
+        "priority": "High"
+      },
+      "stepsData": [
+        {
+          "order": 100,
+          "step": "Step description",
+          "expected_result": "Expected outcome",
+          "test_data": "Test data if applicable"
+        }
+      ]
+    }
+  ]
+}
+
+Requirements:
+- Each test case must have testData with name, short_description, description, test_type, priority, and state
+- Include versionData with version numbering and descriptive information
+- Include stepsData array with ordered steps (order field: 100, 200, 300, etc.)
+- Each step must have: order, step, expected_result, and test_data fields
+- Priority values: "Critical", "High", "Medium", "Low"
+- test_type values: "functional", "integration", "regression", "smoke"
+- Return valid JSON array within the response
+
+Return a valid JSON object with a "test_cases" array containing exactly ${numTestCases} test cases.`;
+
+      // Construct endpoint URL based on provider
+      let url = '';
+      let headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (provider === 'azure-openai') {
+        // Azure OpenAI requires specific URL format
+        const endpoint = config.endpoint.endsWith('/') ? config.endpoint : `${config.endpoint}/`;
+        const deploymentName = (config as any).deploymentName || selectedModel;
+        const apiVersion = (config as any).apiVersion || '2024-02-15-preview';
+        url = `${endpoint}openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
+        headers['api-key'] = config.apiKey;
+      } else {
+        // Standard OpenAI-compatible endpoint
+        url = `${config.endpoint}/chat/completions`;
+        headers['Authorization'] = `Bearer ${config.apiKey}`;
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 4000,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`LLM API error: ${response.statusText}`);
+      }
+
+      const data = await response.json() as { choices: Array<{ message: { content: string } }> };
+      const content = data.choices[0]?.message?.content || '';
+
+      // Parse the response - look for JSON object with test_cases array
+      const jsonMatch = content.match(/\{[\s\S]*"test_cases"[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Could not parse test cases from LLM response');
+      }
+
+      const parsedResponse = JSON.parse(jsonMatch[0]) as { test_cases: Omit<GeneratedTestCase, 'id'>[] };
+      const testCases = parsedResponse.test_cases;
+      
+      if (!Array.isArray(testCases) || testCases.length === 0) {
+        throw new Error('No test cases found in response');
+      }
+
+      const formattedTestCases = testCases.map((tc, idx) => ({
+        ...tc,
+        id: `gen-${Date.now()}-${idx}`,
+      }));
+
+      setGeneratedTestCases(formattedTestCases);
+      setSuccess(`Successfully generated ${formattedTestCases.length} test cases!`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(`Failed to generate test cases: ${errorMessage}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+  const copyToClipboard = (testCase: GeneratedTestCase) => {
+    const text = JSON.stringify(testCase, null, 2);
+    navigator.clipboard.writeText(text);
+    setCopiedId(testCase.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const getPriorityColor = (priority: string) => {
+    const lowerPriority = priority.toLowerCase();
+    if (lowerPriority === 'critical') return 'bg-red-100 text-red-700 border-red-300';
+    if (lowerPriority === 'high') return 'bg-orange-100 text-orange-700 border-orange-300';
+    if (lowerPriority === 'medium') return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+    if (lowerPriority === 'low') return 'bg-green-100 text-green-700 border-green-300';
+    return 'bg-slate-100 text-slate-700 border-slate-300';
+  };
+
+  const getTestTypeColor = (testType: string) => {
+    const lowerType = testType.toLowerCase();
+    if (lowerType === 'functional') return 'bg-blue-100 text-blue-700 border-blue-300';
+    if (lowerType === 'integration') return 'bg-purple-100 text-purple-700 border-purple-300';
+    if (lowerType === 'regression') return 'bg-indigo-100 text-indigo-700 border-indigo-300';
+    if (lowerType === 'smoke') return 'bg-cyan-100 text-cyan-700 border-cyan-300';
+    return 'bg-slate-100 text-slate-700 border-slate-300';
+  };
+
+  const getSourceBadgeColor = (source: string) => {
+    return source === 'jira' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-purple-100 text-purple-700 border-purple-300';
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <TestTubes className="w-8 h-8 text-blue-600" />
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Test Cases Generator</h2>
+          <p className="text-slate-600 mt-1">Generate test cases from Jira & ServiceNow stories using AI</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Configuration Panel - TOP LEFT */}
+        <div className="lg:col-span-1 space-y-4">
+          <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6 space-y-4">
+            <h3 className="font-semibold text-slate-900">LLM Configuration</h3>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">LLM Provider</label>
+              <select
+                value={selectedProvider}
+                onChange={(e) => {
+                  const provider = e.target.value as LLMProvider;
+                  setSelectedProvider(provider);
+                  setSelectedModel(getModelsByProvider(provider)[0]?.id || '');
+                }}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                {configuredProviders.length === 0 ? (
+                  <option value="">No providers configured</option>
+                ) : (
+                  configuredProviders.map((provider) => (
+                    <option key={provider} value={provider}>
+                      {LLM_PROVIDERS[provider]?.name || provider}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Model</label>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                {availableModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Number of Test Cases</label>
+              <select
+                value={numTestCases}
+                onChange={(e) => setNumTestCases(parseInt(e.target.value))}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                {[1, 2, 3, 5, 10].map((num) => (
+                  <option key={num} value={num}>
+                    {num} test case{num !== 1 ? 's' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {error && (
+              <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <div>{error}</div>
+              </div>
+            )}
+
+            {success && (
+              <div className="flex gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+                <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <div>{success}</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Stories Panel */}
+        <div className="lg:col-span-1 space-y-4">
+          <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-slate-900">Stories</h3>
+              <button
+                onClick={loadStories}
+                disabled={loadingStories}
+                className="p-2 text-slate-600 hover:text-slate-900 disabled:text-gray-400"
+                title="Refresh stories"
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingStories ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+
+            {storiesError && (
+              <div className="flex gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div>{storiesError}</div>
+              </div>
+            )}
+
+            {loadingStories ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader className="w-5 h-5 animate-spin text-blue-600" />
+              </div>
+            ) : stories.length === 0 ? (
+              <div className="text-center py-4">
+                <p className="text-sm text-slate-600">No stories found</p>
+                <p className="text-xs text-slate-500 mt-2">Configure Jira or ServiceNow credentials</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {stories.map((story) => (
+                  <button
+                    key={`${story.source}-${story.id}`}
+                    onClick={() => setSelectedStory(story)}
+                    className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
+                      selectedStory?.id === story.id && selectedStory?.source === story.source
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-slate-200 hover:border-blue-300'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className={`px-2 py-1 text-xs font-semibold rounded border ${getSourceBadgeColor(story.source)}`}>
+                        {story.source.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="text-sm font-semibold text-slate-900 mt-1 truncate">{story.key}</div>
+                    <div className="text-xs text-slate-600 mt-1 line-clamp-2">{story.title}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Selected Story Panel with Generate Button */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-slate-900">Selected Story</h3>
+              {generatedTestCases.length > 0 && (
+                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
+                  {generatedTestCases.length} Test Case{generatedTestCases.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+
+            {selectedStory ? (
+              <div className="space-y-4">
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <span className="font-semibold text-slate-700">Key:</span>
+                    <p className="text-slate-600 mt-1">{selectedStory.key}</p>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-700">Title:</span>
+                    <p className="text-slate-600 mt-1">{selectedStory.title}</p>
+                  </div>
+                  <div className="flex gap-4">
+                    <div>
+                      <span className="font-semibold text-slate-700">Status:</span>
+                      <span className="ml-2 px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs">
+                        {selectedStory.status}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-700">Priority:</span>
+                      <span className="ml-2 px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs">
+                        {selectedStory.priority}
+                      </span>
+                    </div>
+                  </div>
+                  {selectedStory.assignee && (
+                    <div>
+                      <span className="font-semibold text-slate-700">Assignee:</span>
+                      <p className="text-slate-600 mt-1">{selectedStory.assignee}</p>
+                    </div>
+                  )}
+                  <div>
+                    <span className="font-semibold text-slate-700">Description:</span>
+                    <p className="text-slate-600 mt-1 bg-slate-50 p-2 rounded max-h-32 overflow-y-auto">
+                      {selectedStory.description}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-700">Acceptance Criteria:</span>
+                    {selectedStory.acceptanceCriteria ? (
+                      <p className="text-slate-600 mt-1 bg-slate-50 p-2 rounded max-h-32 overflow-y-auto">
+                        {selectedStory.acceptanceCriteria}
+                      </p>
+                    ) : (
+                      <p className="text-slate-500 italic mt-1">No acceptance criteria provided</p>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  onClick={generateTestCases}
+                  disabled={isGenerating || !selectedStory || configuredProviders.length === 0}
+                  className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors font-semibold flex items-center justify-center gap-2 mt-6"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Generate Test Cases
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <p className="text-slate-600 text-center py-8">Select a story to view details and generate test cases</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Generated Test Cases - Table View with Expandable Details */}
+      {generatedTestCases.length > 0 && (
+        <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6 space-y-4">
+          <h3 className="font-semibold text-slate-900">Generated Test Cases ({generatedTestCases.length})</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-100 border-b border-slate-300">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700 w-10"></th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Test Case Name</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Description</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Priority</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Version</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">State</th>
+                  <th className="px-4 py-3 text-center font-semibold text-slate-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {generatedTestCases.map((testCase) => (
+                  <>
+                    <tr
+                      key={testCase.id}
+                      className="hover:bg-slate-50 transition-colors cursor-pointer"
+                      onClick={() => setExpandedTestCaseId(expandedTestCaseId === testCase.id ? null : testCase.id)}
+                    >
+                      <td className="px-4 py-3 text-center">
+                        <ChevronDown
+                          className={`w-5 h-5 text-slate-400 transition-transform inline ${
+                            expandedTestCaseId === testCase.id ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-900 max-w-xs truncate">{testCase.testData.name}</td>
+                      <td className="px-4 py-3 text-slate-600 max-w-sm truncate">{testCase.testData.short_description}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 text-xs font-semibold rounded border inline-block ${getTestTypeColor(testCase.testData.test_type)}`}>
+                          {testCase.testData.test_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 text-xs font-semibold rounded border inline-block ${getPriorityColor(testCase.testData.priority)}`}>
+                          {testCase.testData.priority}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm font-mono text-slate-700">{testCase.versionData.version}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-1 text-xs font-semibold rounded bg-slate-100 text-slate-700 border border-slate-300 inline-block">
+                          {testCase.testData.state}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(testCase);
+                          }}
+                          className="text-slate-400 hover:text-slate-600 transition-colors inline-block"
+                          title="Copy to clipboard"
+                        >
+                          {copiedId === testCase.id ? (
+                            <Check className="w-4 h-4 text-green-600" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+
+                    {/* Expandable Row - Full Test Case Details */}
+                    {expandedTestCaseId === testCase.id && (
+                      <tr className="bg-slate-50 border-l-4 border-blue-500">
+                        <td colSpan={8} className="px-4 py-4">
+                          <div className="space-y-6">
+                            {/* Test Data Section */}
+                            <div className="space-y-3">
+                              <h4 className="font-bold text-slate-900 text-md border-b-2 border-blue-500 pb-2">Test Case Data</h4>
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <span className="font-semibold text-slate-700">Name:</span>
+                                  <p className="text-slate-600 mt-1">{testCase.testData.name}</p>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-slate-700">Type:</span>
+                                  <p className="mt-1">
+                                    <span className={`px-2 py-1 text-xs font-semibold rounded border ${getTestTypeColor(testCase.testData.test_type)}`}>
+                                      {testCase.testData.test_type}
+                                    </span>
+                                  </p>
+                                </div>
+                                <div className="col-span-2">
+                                  <span className="font-semibold text-slate-700">Description:</span>
+                                  <p className="text-slate-600 mt-1 bg-white p-2 rounded border border-slate-200">
+                                    {testCase.testData.description}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-slate-700">Priority:</span>
+                                  <p className="mt-1">
+                                    <span className={`px-2 py-1 text-xs font-semibold rounded border ${getPriorityColor(testCase.testData.priority)}`}>
+                                      {testCase.testData.priority}
+                                    </span>
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-slate-700">State:</span>
+                                  <p className="text-slate-600 mt-1">{testCase.testData.state}</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Version Data Section */}
+                            <div className="space-y-3">
+                              <h4 className="font-bold text-slate-900 text-md border-b-2 border-green-500 pb-2">Version Information</h4>
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <span className="font-semibold text-slate-700">Version:</span>
+                                  <p className="text-slate-600 mt-1 font-mono">{testCase.versionData.version}</p>
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-slate-700">State:</span>
+                                  <p className="text-slate-600 mt-1">{testCase.versionData.state}</p>
+                                </div>
+                                <div className="col-span-2">
+                                  <span className="font-semibold text-slate-700">Description:</span>
+                                  <p className="text-slate-600 mt-1 bg-white p-2 rounded border border-slate-200">
+                                    {testCase.versionData.description}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Test Steps Section */}
+                            <div className="space-y-3">
+                              <h4 className="font-bold text-slate-900 text-md border-b-2 border-purple-500 pb-2">Test Steps ({testCase.stepsData.length})</h4>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs border-collapse">
+                                  <thead className="bg-slate-200 border border-slate-300">
+                                    <tr>
+                                      <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300 w-16">Step #</th>
+                                      <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300">Step Description</th>
+                                      <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300">Expected Result</th>
+                                      <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300 w-32">Test Data</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-300">
+                                    {testCase.stepsData
+                                      .sort((a, b) => a.order - b.order)
+                                      .map((step, idx) => (
+                                        <tr key={idx} className="bg-white hover:bg-slate-50 border border-slate-300">
+                                          <td className="px-3 py-2 text-slate-700 font-bold border border-slate-300 bg-slate-50">{step.order}</td>
+                                          <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal">{step.step}</td>
+                                          <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal">{step.expected_result}</td>
+                                          <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal text-xs bg-slate-50 font-mono">
+                                            {step.test_data || '—'}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Info Box */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h4 className="font-semibold text-blue-900 mb-2">💡 How it works</h4>
+        <ul className="text-sm text-blue-800 space-y-1">
+          <li>• Stories are automatically fetched from configured Jira and ServiceNow instances</li>
+          <li>• Select a story from the list to view its details</li>
+          <li>• Choose an LLM provider and model for test case generation</li>
+          <li>• AI generates comprehensive test cases with structured steps and test data</li>
+          <li>• Click on a test case row to expand and view full details including all test steps</li>
+          <li>• Copy individual test cases to use in your test management system</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+

@@ -8,6 +8,299 @@
 - [x] No unused variables or imports
 - [x] Production build successful (1476 modules, 198.5 KB JS)
 - [x] Proper error handling with try-catch blocks
+
+## 🔧 Recent Security & Configuration Improvements (v2.0)
+
+### Security Updates
+- [x] Environment variable validation at startup (required: CORS_ORIGIN, SESSION_SECRET)
+- [x] Removed dangerous `/api/jira/_store` debug endpoint
+- [x] Enhanced session configuration (httpOnly, maxAge: 24h, sameSite)
+- [x] Strict CORS with allowed methods and headers
+- [x] Graceful shutdown handlers (SIGTERM, unhandledRejection)
+- [x] Production-aware cookie security (secure flag in prod)
+- [x] Server-side credential storage only (never in browser)
+
+### Error Handling & Logging
+- [x] Global error handler middleware with proper HTTP status codes
+- [x] Environment-aware error responses (dev: detailed, prod: generic)
+- [x] Error logging with timestamps
+- [x] Improved frontend error messages with type-safe response handling
+- [x] Network error resilience in integration service
+
+### Configuration Management
+- [x] .env.example with comprehensive documentation
+- [x] Backend configuration template in .env
+- [x] NODE_ENV support for development/production
+- [x] CORS_ORIGIN supports comma-separated multiple origins
+- [x] SERVER_SECRET required validation
+
+### Type Safety
+- [x] Added @types/node and @types/express-session
+- [x] API error response type guards
+- [x] Proper TypeScript interfaces for all API responses
+
+---
+
+## 🚨 Important Before Going to Production
+
+### Pre-Production Checklist
+
+1. **Environment Setup**
+   - [ ] Copy `.env.example` to `.env`
+   - [ ] Generate a strong SESSION_SECRET:
+     ```bash
+     node -e "console.log('SESSION_SECRET=' + require('crypto').randomBytes(32).toString('hex'))"
+     ```
+   - [ ] Set `NODE_ENV=production`
+   - [ ] Update `CORS_ORIGIN` with your actual frontend domain(s)
+   - [ ] Configure all LLM API keys for your chosen providers
+
+2. **Security Review**
+   - [ ] Verify .env is in .gitignore
+   - [ ] Ensure no secrets are hardcoded in source code
+   - [ ] Enable HTTPS in production (reverse proxy/load balancer)
+   - [ ] Consider implementing rate limiting (not included in v1)
+   - [ ] Review CORS configuration for your domains
+   - [ ] Verify SESSION_SECRET is strong and unique per environment
+
+3. **Backend Credentials**
+   - [ ] Test Jira connection with valid production credentials
+   - [ ] Test ServiceNow connection with valid production credentials
+   - [ ] Ensure API tokens have minimal required permissions
+   - [ ] Set up credential rotation schedule
+   - [ ] Never commit .env or credentials to version control
+
+4. **Session Storage** ⚠️ **Critical for Production**
+   - [ ] **Currently: In-memory sessions (LOST on server restart)**
+   - [ ] **For Production: Implement persistent session storage:**
+     - Option 1: Redis + connect-redis
+     - Option 2: PostgreSQL + connect-pg-simple
+     - Option 3: MongoDB + connect-mongo
+   - [ ] Update server.ts session configuration
+   - [ ] Test session persistence across restarts
+
+5. **Monitoring & Logging**
+   - [ ] Set up centralized logging (Winston, Pino, or cloud provider)
+   - [ ] Monitor memory usage (in-memory sessions will grow)
+   - [ ] Set up error tracking (Sentry, DataDog, etc.)
+   - [ ] Create alerts for critical errors
+   - [ ] Log API requests for audit trail
+
+6. **Testing**
+   - [ ] Test health endpoint: `GET /api/health`
+   - [ ] Test Jira connection with real credentials
+   - [ ] Test ServiceNow connection with real credentials
+   - [ ] Load test with expected concurrent users
+   - [ ] Test session expiration (24 hours)
+   - [ ] Test API error handling and error messages
+
+7. **Deployment**
+   - [ ] Use process manager (PM2, systemd, or container orchestration)
+   - [ ] Configure environment-specific .env files
+   - [ ] Set resource limits (memory, CPU)
+   - [ ] Implement health check monitoring
+   - [ ] Plan for graceful deployments (SIGTERM handling included)
+   - [ ] Test rollback procedures
+
+8. **Dependency Management**
+   - [ ] Run `npm audit` and resolve vulnerabilities
+   - [ ] Review dependency versions and update as needed
+   - [ ] Set up automated security scanning
+   - [ ] Document critical dependencies
+
+---
+
+## 📋 Future Enhancements (Not Critical for v1.0)
+
+- [ ] Rate limiting middleware (prevent brute force)
+- [ ] Request/response validation (zod/joi schemas)
+- [ ] Persistent session storage (Redis/PostgreSQL)
+- [ ] API token refresh/rotation logic
+- [ ] CSRF protection middleware
+- [ ] Request logging middleware for audit trails
+- [ ] Prometheus metrics integration
+- [ ] OpenAPI/Swagger documentation
+- [ ] Backend unit tests
+- [ ] E2E integration tests
+- [ ] Database migration system
+- [ ] Docker support with health probes
+- [ ] Circuit breaker for external API failures
+- [ ] Retry logic with exponential backoff
+
+---
+
+## Environment Variables Reference
+
+### Required (Application will crash if missing)
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `CORS_ORIGIN` | Frontend URL(s) for CORS | `http://localhost:5175` |
+| `SESSION_SECRET` | Secret for signing sessions | Generated with crypto.randomBytes(32) |
+
+### Optional
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NODE_ENV` | `development` | Controls logging verbosity & security |
+| `PORT` | `8080` | Server port |
+
+### Frontend-Only (VITE_* prefix)
+These are used by the React app for LLM integrations:
+- `VITE_OPENAI_API_KEY` - OpenAI API key
+- `VITE_GROQ_API_KEY` - Groq API key
+- `VITE_AZURE_OPENAI_API_KEY` - Azure OpenAI API key
+- `VITE_CLAUDE_API_KEY` - Claude/Anthropic API key
+- `VITE_TESTLEAF_API_KEY` - TestLeaf API key
+- Plus corresponding `*_ENDPOINT` and `*_DEFAULT_MODEL` for each
+
+---
+
+## API Endpoints Summary
+
+### Health Check (No Auth)
+```
+GET /api/health
+Response: { "status": "ok", "message": "Backend is running" }
+```
+
+### Jira Integration
+```
+POST /api/jira/connect
+Body: { "baseUrl": "https://...", "email": "...", "apiToken": "..." }
+Response: { "success": true, "message": "...", "user": "..." }
+
+GET /api/jira/stories
+Query: ?q=type%3DStory (optional JQL)
+Response: { "stories": [...] }
+```
+
+### ServiceNow Integration
+```
+POST /api/servicenow/connect
+Body: { "instanceUrl": "https://...", "username": "...", "password": "..." }
+Response: { "success": true, "message": "..." }
+
+GET /api/servicenow/stories
+Query: ?q=ORDERBYDESCsys_created_on (optional)
+Response: { "stories": [...] }
+```
+
+### Error Response Format
+```json
+{
+  "error": "Detailed error message",
+  "stack": "Stack trace (only in development)"
+}
+```
+
+---
+
+## Production Deployment Examples
+
+### Systemd Service
+```ini
+[Unit]
+Description=R-Automation QA Suite Backend
+After=network.target
+
+[Service]
+Type=simple
+User=appuser
+WorkingDirectory=/opt/r-automation
+EnvironmentFile=/opt/r-automation/.env
+ExecStart=/usr/bin/node /opt/r-automation/dist/server.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Docker Deployment
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+RUN npm run build:server
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8080/api/health')"
+CMD ["node", "dist/server.js"]
+```
+
+### PM2 Ecosystem File
+```js
+module.exports = {
+  apps: [{
+    name: 'r-automation-backend',
+    script: './dist/server.js',
+    instances: 'max',
+    exec_mode: 'cluster',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 8080
+    },
+    error_file: './logs/err.log',
+    out_file: './logs/out.log'
+  }]
+};
+```
+
+---
+
+## Troubleshooting Guide
+
+### Server Fails to Start
+**Error:** `Missing required environment variables: CORS_ORIGIN, SESSION_SECRET`
+- **Fix:** Ensure .env file exists with both variables set
+- **Verification:** `cat .env | grep -E "CORS_ORIGIN|SESSION_SECRET"`
+
+**Error:** `Cannot find module 'dist/server.js'`
+- **Fix:** Run `npm run build:server` first
+- **Verification:** `ls -la dist/server.js`
+
+### Sessions Not Persisting
+- **Expected Behavior:** Sessions are lost on server restart (in-memory storage)
+- **For Production:** See "Session Storage" section above
+- **Workaround:** Restart users re-authenticate after server restart
+
+### CORS Errors in Browser
+**Error:** `Access to XMLHttpRequest blocked by CORS policy`
+- **Fix:** Verify CORS_ORIGIN matches frontend URL exactly
+- **Multi-origin:** Use comma-separated: `CORS_ORIGIN=http://localhost:5175,https://app.example.com`
+- **Debug:** Check browser DevTools Network tab for preflight request
+
+### 401 Unauthorized on API calls
+**Error:** `Not connected to Jira/ServiceNow. Call /api/*/connect first.`
+- **Fix:** Call the connect endpoint first with valid credentials
+- **Session Expired:** Sessions expire after 24 hours - reconnect required
+- **Verify:** Check browser cookies for `sessionId`
+
+### Jira/ServiceNow Connection Fails
+**Error:** `Jira connection failed: Unauthorized (401)`
+- **Cause:** Invalid credentials or API token permissions
+- **Fix:** Verify credentials in .env and test with curl:
+  ```bash
+  curl -u "user@email.com:API_TOKEN" https://your-instance.atlassian.net/rest/api/3/myself
+  ```
+
+---
+
+## Support & Documentation
+
+- **Backend Server:** http://localhost:8080 (development)
+- **Frontend App:** http://localhost:5175 (development)
+- **Health Check:** `curl http://localhost:8080/api/health`
+- **API Documentation:** See "API Endpoints Summary" above
+
+---
+
+**Last Updated:** December 12, 2025
+**Version:** 2.0 (Security & Configuration Improvements)
+**Status:** Ready for Production (with pre-deployment checklist)
 - [x] Input validation for all forms
 - [x] Type-safe codebase with no `any` types
 
