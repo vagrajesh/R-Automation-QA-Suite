@@ -14,6 +14,8 @@ export interface Story {
   status: string;
   priority: string;
   assignee?: string;
+  epicKey?: string;
+  epicTitle?: string;
   source: 'jira' | 'servicenow';
 }
 

@@ -152,7 +152,7 @@ Generate test cases in the following JSON format with a "test_cases" array:
         "name": "Test Case Name",
         "short_description": "Brief description",
         "description": "Detailed test case description",
-        "test_type": "functional",
+        "test_type": "Positive",
         "priority": "High",
         "state": "draft"
       },
@@ -181,7 +181,7 @@ Requirements:
 - Include stepsData array with ordered steps (order field: 100, 200, 300, etc.)
 - Each step must have: order, step, expected_result, and test_data fields
 - Priority values: "Critical", "High", "Medium", "Low"
-- test_type values: "functional", "integration", "regression", "smoke"
+- test_type values: "Positive", "Negative", "End to End", "Edge Cases"
 - Return valid JSON array within the response
 
 Return a valid JSON object with a "test_cases" array containing exactly ${numTestCases} test cases.`;
@@ -273,10 +273,10 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
 
   const getTestTypeColor = (testType: string) => {
     const lowerType = testType.toLowerCase();
-    if (lowerType === 'functional') return 'bg-blue-100 text-blue-700 border-blue-300';
-    if (lowerType === 'integration') return 'bg-purple-100 text-purple-700 border-purple-300';
-    if (lowerType === 'regression') return 'bg-indigo-100 text-indigo-700 border-indigo-300';
-    if (lowerType === 'smoke') return 'bg-cyan-100 text-cyan-700 border-cyan-300';
+    if (lowerType === 'positive') return 'bg-green-100 text-green-700 border-green-300';
+    if (lowerType === 'negative') return 'bg-red-100 text-red-700 border-red-300';
+    if (lowerType === 'end to end') return 'bg-blue-100 text-blue-700 border-blue-300';
+    if (lowerType === 'edge cases') return 'bg-orange-100 text-orange-700 border-orange-300';
     return 'bg-slate-100 text-slate-700 border-slate-300';
   };
 
@@ -505,6 +505,21 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
                       <p className="text-slate-500 italic mt-1">No acceptance criteria provided</p>
                     )}
                   </div>
+                  {selectedStory && (selectedStory.epicKey || selectedStory.epicTitle) && (
+                    <div className="space-y-2 pt-3 border-t border-slate-200">
+                      <h4 className="font-semibold text-slate-900">Epic Information</h4>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="font-semibold text-slate-700">Epic Number:</span>
+                          <p className="text-slate-600 mt-1">{selectedStory.epicKey || '-'}</p>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-slate-700">Epic Short Description:</span>
+                          <p className="text-slate-600 mt-1 truncate" title={selectedStory.epicTitle}>{selectedStory.epicTitle || '-'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <button
@@ -547,6 +562,9 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Priority</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Version</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">State</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Story ID</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Epic Number</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Epic Short Description</th>
                   <th className="px-4 py-3 text-center font-semibold text-slate-700">Actions</th>
                 </tr>
               </thead>
@@ -583,6 +601,9 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
                           {testCase.testData.state}
                         </span>
                       </td>
+                      <td className="px-4 py-3 text-sm font-semibold text-slate-900 max-w-xs truncate">{selectedStory?.key || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600 max-w-xs truncate">{selectedStory?.epicKey || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600 max-w-sm truncate" title={selectedStory?.epicTitle}>{selectedStory?.epicTitle || '-'}</td>
                       <td className="px-4 py-3 text-center">
                         <button
                           onClick={(e) => {
@@ -604,7 +625,7 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
                     {/* Expandable Row - Full Test Case Details */}
                     {expandedTestCaseId === testCase.id && (
                       <tr className="bg-slate-50 border-l-4 border-blue-500">
-                        <td colSpan={8} className="px-4 py-4">
+                        <td colSpan={11} className="px-4 py-4">
                           <div className="space-y-6">
                             {/* Test Steps Section */}
                             <div className="space-y-3">

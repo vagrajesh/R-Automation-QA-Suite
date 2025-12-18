@@ -253,7 +253,7 @@ app.get('/api/servicenow/stories', async (req: Request, res: Response) => {
     const credentials = btoa(`${username}:${password}`);
 
     const response = await axios.get(
-      `${testUrl}api/now/table/rm_story?sysparm_limit=50&sysparm_query=${encodeURIComponent(queryParam as string)}&sysparm_fields=sys_id,number,short_description,description,state,priority,acceptance_criteria`,
+      `${testUrl}api/now/table/rm_story?sysparm_limit=50&sysparm_query=${encodeURIComponent(queryParam as string)}&sysparm_fields=sys_id,number,short_description,description,state,priority,acceptance_criteria,epic`,
       {
         headers: {
           Authorization: `Basic ${credentials}`,
@@ -286,20 +286,52 @@ app.get('/api/servicenow/stories', async (req: Request, res: Response) => {
       '5': 'Planning',
     };
 
-    const stories = response.data.result.map((story: any) => {
-      console.log('ServiceNow Story Fields:', Object.keys(story));
-      return {
-        id: story.sys_id,
-        key: story.number,
-        title: story.short_description || 'Untitled',
-        description: story.description || '',
-        acceptanceCriteria: story.acceptance_criteria || undefined,
-        status: statusMap[story.state] || 'Unknown',
-        priority: priorityMap[story.priority] || 'Medium',
-        assignee: story.assigned_to?.display_value || undefined,
-        source: 'servicenow' as const,
-      };
-    });
+    const stories = await Promise.all(
+      response.data.result.map(async (story: any) => {
+        console.log('ServiceNow Story Fields:', Object.keys(story));
+        
+        let epicNumber = undefined;
+        let epicTitle = undefined;
+        
+        // If story has an epic, fetch epic details
+        if (story.epic && story.epic.value) {
+          try {
+            const epicResponse = await axios.get(
+              `${testUrl}api/now/table/rm_epic?sysparm_limit=1&sysparm_query=sys_id=${story.epic.value}&sysparm_fields=number,short_description`,
+              {
+                headers: {
+                  Authorization: `Basic ${credentials}`,
+                  Accept: 'application/json',
+                },
+                timeout: 5000,
+              }
+            );
+            
+            if (epicResponse.data.result && epicResponse.data.result.length > 0) {
+              const epic = epicResponse.data.result[0];
+              epicNumber = epic.number;
+              epicTitle = epic.short_description;
+            }
+          } catch (epicError) {
+            console.log('Failed to fetch epic details:', epicError);
+          }
+        }
+        
+        return {
+          id: story.sys_id,
+          key: story.number,
+          title: story.short_description || 'Untitled',
+          description: story.description || '',
+          acceptanceCriteria: story.acceptance_criteria || undefined,
+          status: statusMap[story.state] || 'Unknown',
+          priority: priorityMap[story.priority] || 'Medium',
+          assignee: story.assigned_to?.display_value || undefined,
+          epicKey: epicNumber,
+          epicTitle: epicTitle,
+          source: 'servicenow' as const,
+        };
+      })
+    );
 
     res.json({ stories });
   } catch (error) {
