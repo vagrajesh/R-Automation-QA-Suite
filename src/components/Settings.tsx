@@ -101,14 +101,14 @@ export function Settings() {
       let testResult;
       if (id === 'jira') {
         const result = await connectJira(
-          integration.endpoint || '',
-          integration.username || '',
-          integration.apiKey || ''
+          integration.endpoint || '',  // baseUrl for Jira
+          integration.username || '',  // email for Jira
+          integration.apiKey || ''     // apiToken for Jira
         );
         testResult = { success: result.success, message: result.message };
-      } else {
+      } else if (id === 'servicenow') {
         const result = await connectServiceNow(
-          integration.endpoint || '',
+          integration.endpoint || '',  // instanceUrl for ServiceNow
           integration.username || '',
           integration.password || ''
         );

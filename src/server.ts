@@ -166,21 +166,27 @@ app.get('/api/jira/stories', async (req: Request, res: Response) => {
 app.post('/api/servicenow/connect', async (req: Request, res: Response) => {
   try {
     const { instanceUrl, username, password } = req.body;
+    
+    console.log('[ServiceNow Connect] Request received:', { instanceUrl, username });
 
     if (!instanceUrl || !username || !password) {
+      console.log('[ServiceNow Connect] Missing fields:', { instanceUrl: !!instanceUrl, username: !!username, password: !!password });
       return res.status(400).json({ error: 'Missing required fields: instanceUrl, username, password' });
     }
 
     // Validate URL format
     try {
       new URL(instanceUrl);
-    } catch {
+    } catch (urlError) {
+      console.log('[ServiceNow Connect] Invalid URL format:', instanceUrl);
       return res.status(400).json({ error: 'Invalid instanceUrl format' });
     }
 
     // Test connection to ServiceNow
     const testUrl = instanceUrl.endsWith('/') ? instanceUrl : `${instanceUrl}/`;
     const credentials = btoa(`${username}:${password}`);
+    
+    console.log('[ServiceNow Connect] Testing connection to:', `${testUrl}api/now/table/sys_user`);
 
     const response = await axios.get(`${testUrl}api/now/table/sys_user?sysparm_limit=1`, {
       headers: {
@@ -192,6 +198,7 @@ app.post('/api/servicenow/connect', async (req: Request, res: Response) => {
 
     // Validate response structure
     if (!response.data || !Array.isArray(response.data.result)) {
+      console.log('[ServiceNow Connect] Invalid response format:', typeof response.data);
       return res.status(500).json({ error: 'Invalid ServiceNow response format' });
     }
 
@@ -199,6 +206,8 @@ app.post('/api/servicenow/connect', async (req: Request, res: Response) => {
     if (req.session) {
       (req.session as any).servicenow = { instanceUrl, username, password };
     }
+    
+    console.log('[ServiceNow Connect] Successfully connected');
 
     res.json({
       success: true,
@@ -206,6 +215,7 @@ app.post('/api/servicenow/connect', async (req: Request, res: Response) => {
       recordCount: response.data.result?.length || 0,
     });
   } catch (error) {
+    console.error('[ServiceNow Connect] Error:', error);
     if (error instanceof axios.AxiosError) {
       if (error.response?.status === 401) {
         return res.status(401).json({ error: 'ServiceNow authentication failed. Check username and password.' });
