@@ -71,6 +71,7 @@ export function TestCasesGenerator() {
   const [numTestCases, setNumTestCases] = useState(3);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedTestCaseId, setExpandedTestCaseId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState<string>('');
 
   const configuredProviders = llmService.getConfiguredProviders();
   const availableModels = getModelsByProvider(selectedProvider);
@@ -283,6 +284,47 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
     return source === 'jira' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-purple-100 text-purple-700 border-purple-300';
   };
 
+  const parseAcceptanceCriteria = (html: string): string[] => {
+    if (!html) return [];
+    
+    // Create a temporary div to parse HTML
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    
+    // Extract all list items
+    const listItems = tempDiv.querySelectorAll('li');
+    const items: string[] = [];
+    
+    listItems.forEach((li) => {
+      const text = li.textContent?.trim() || '';
+      if (text) {
+        items.push(text);
+      }
+    });
+    
+    // If no list items found, try to split by common delimiters
+    if (items.length === 0) {
+      const cleanText = html
+        .replace(/<[^>]*>/g, '') // Remove HTML tags
+        .replace(/&#\d+;/g, (match) => {
+          // Decode HTML entities like &#34; to "
+          const code = parseInt(match.substring(2, match.length - 1));
+          return String.fromCharCode(code);
+        })
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      
+      return cleanText;
+    }
+    
+    return items;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -293,48 +335,20 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Configuration Panel - TOP LEFT */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Stories Panel */}
         <div className="lg:col-span-1 space-y-4">
           <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6 space-y-4">
-            <h3 className="font-semibold text-slate-900">LLM Configuration</h3>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">LLM Provider</label>
-              <select
-                value={selectedProvider}
-                onChange={(e) => {
-                  const provider = e.target.value as LLMProvider;
-                  setSelectedProvider(provider);
-                  setSelectedModel(getModelsByProvider(provider)[0]?.id || '');
-                }}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-slate-900">Stories</h3>
+              <button
+                onClick={loadStories}
+                disabled={loadingStories}
+                className="p-2 text-slate-600 hover:text-slate-900 disabled:text-gray-400"
+                title="Refresh stories"
               >
-                {configuredProviders.length === 0 ? (
-                  <option value="">No providers configured</option>
-                ) : (
-                  configuredProviders.map((provider) => (
-                    <option key={provider} value={provider}>
-                      {LLM_PROVIDERS[provider]?.name || provider}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Model</label>
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              >
-                {availableModels.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
+                <RefreshCw className={`w-4 h-4 ${loadingStories ? 'animate-spin' : ''}`} />
+              </button>
             </div>
 
             <div>
@@ -352,35 +366,15 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
               </select>
             </div>
 
-            {error && (
-              <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                <div>{error}</div>
-              </div>
-            )}
-
-            {success && (
-              <div className="flex gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
-                <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                <div>{success}</div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Stories Panel */}
-        <div className="lg:col-span-1 space-y-4">
-          <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900">Stories</h3>
-              <button
-                onClick={loadStories}
-                disabled={loadingStories}
-                className="p-2 text-slate-600 hover:text-slate-900 disabled:text-gray-400"
-                title="Refresh stories"
-              >
-                <RefreshCw className={`w-4 h-4 ${loadingStories ? 'animate-spin' : ''}`} />
-              </button>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Search Stories</label>
+              <input
+                type="text"
+                placeholder="Search by Story ID or text..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
             </div>
 
             {storiesError && (
@@ -401,7 +395,16 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
               </div>
             ) : (
               <div className="space-y-2 max-h-96 overflow-y-auto">
-                {stories.map((story) => (
+                {stories
+                  .filter((story) => {
+                    const searchLower = searchTerm.toLowerCase();
+                    return (
+                      story.key.toLowerCase().includes(searchLower) ||
+                      story.title.toLowerCase().includes(searchLower) ||
+                      story.description.toLowerCase().includes(searchLower)
+                    );
+                  })
+                  .map((story) => (
                   <button
                     key={`${story.source}-${story.id}`}
                     onClick={() => setSelectedStory(story)}
@@ -426,7 +429,7 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
         </div>
 
         {/* Selected Story Panel with Generate Button */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-1 space-y-4">
           <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-slate-900">Selected Story</h3>
@@ -439,6 +442,20 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
 
             {selectedStory ? (
               <div className="space-y-4">
+                {error && (
+                  <div className="flex gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <div>{error}</div>
+                  </div>
+                )}
+
+                {success && (
+                  <div className="flex gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
+                    <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <div>{success}</div>
+                  </div>
+                )}
+
                 <div className="space-y-3 text-sm">
                   <div>
                     <span className="font-semibold text-slate-700">Key:</span>
@@ -477,9 +494,13 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
                   <div>
                     <span className="font-semibold text-slate-700">Acceptance Criteria:</span>
                     {selectedStory.acceptanceCriteria ? (
-                      <p className="text-slate-600 mt-1 bg-slate-50 p-2 rounded max-h-32 overflow-y-auto">
-                        {selectedStory.acceptanceCriteria}
-                      </p>
+                      <ul className="text-slate-600 mt-2 bg-slate-50 p-4 rounded max-h-40 overflow-y-auto space-y-2 list-disc list-inside">
+                        {parseAcceptanceCriteria(selectedStory.acceptanceCriteria).map((criterion, idx) => (
+                          <li key={idx} className="text-sm text-slate-700">
+                            {criterion}
+                          </li>
+                        ))}
+                      </ul>
                     ) : (
                       <p className="text-slate-500 italic mt-1">No acceptance criteria provided</p>
                     )}
