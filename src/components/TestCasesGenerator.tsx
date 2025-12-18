@@ -606,64 +606,6 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
                       <tr className="bg-slate-50 border-l-4 border-blue-500">
                         <td colSpan={8} className="px-4 py-4">
                           <div className="space-y-6">
-                            {/* Test Data Section */}
-                            <div className="space-y-3">
-                              <h4 className="font-bold text-slate-900 text-md border-b-2 border-blue-500 pb-2">Test Case Data</h4>
-                              <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <span className="font-semibold text-slate-700">Name:</span>
-                                  <p className="text-slate-600 mt-1">{testCase.testData.name}</p>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-slate-700">Type:</span>
-                                  <p className="mt-1">
-                                    <span className={`px-2 py-1 text-xs font-semibold rounded border ${getTestTypeColor(testCase.testData.test_type)}`}>
-                                      {testCase.testData.test_type}
-                                    </span>
-                                  </p>
-                                </div>
-                                <div className="col-span-2">
-                                  <span className="font-semibold text-slate-700">Description:</span>
-                                  <p className="text-slate-600 mt-1 bg-white p-2 rounded border border-slate-200">
-                                    {testCase.testData.description}
-                                  </p>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-slate-700">Priority:</span>
-                                  <p className="mt-1">
-                                    <span className={`px-2 py-1 text-xs font-semibold rounded border ${getPriorityColor(testCase.testData.priority)}`}>
-                                      {testCase.testData.priority}
-                                    </span>
-                                  </p>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-slate-700">State:</span>
-                                  <p className="text-slate-600 mt-1">{testCase.testData.state}</p>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Version Data Section */}
-                            <div className="space-y-3">
-                              <h4 className="font-bold text-slate-900 text-md border-b-2 border-green-500 pb-2">Version Information</h4>
-                              <div className="grid grid-cols-2 gap-4 text-sm">
-                                <div>
-                                  <span className="font-semibold text-slate-700">Version:</span>
-                                  <p className="text-slate-600 mt-1 font-mono">{testCase.versionData.version}</p>
-                                </div>
-                                <div>
-                                  <span className="font-semibold text-slate-700">State:</span>
-                                  <p className="text-slate-600 mt-1">{testCase.versionData.state}</p>
-                                </div>
-                                <div className="col-span-2">
-                                  <span className="font-semibold text-slate-700">Description:</span>
-                                  <p className="text-slate-600 mt-1 bg-white p-2 rounded border border-slate-200">
-                                    {testCase.versionData.description}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
                             {/* Test Steps Section */}
                             <div className="space-y-3">
                               <h4 className="font-bold text-slate-900 text-md border-b-2 border-purple-500 pb-2">Test Steps ({testCase.stepsData.length})</h4>
