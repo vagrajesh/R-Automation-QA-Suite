@@ -200,8 +200,11 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
         url = `${endpoint}openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
         headers['api-key'] = config.apiKey;
       } else {
-        // Standard OpenAI-compatible endpoint
-        url = `${config.endpoint}/chat/completions`;
+        // Standard OpenAI-compatible endpoint (Groq, TestLeaf, etc.)
+        const baseEndpoint = config.endpoint.endsWith('/chat/completions')
+          ? config.endpoint
+          : `${config.endpoint}/chat/completions`;
+        url = baseEndpoint;
         headers['Authorization'] = `Bearer ${config.apiKey}`;
       }
 

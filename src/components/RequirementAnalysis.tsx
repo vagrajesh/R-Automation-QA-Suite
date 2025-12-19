@@ -145,7 +145,10 @@ Format your response in a clear, structured manner with sections for each criter
         url = 'https://api.openai.com/v1/chat/completions';
         headers['Authorization'] = `Bearer ${config.apiKey}`;
       } else if (provider === 'groq') {
-        url = 'https://api.groq.com/openai/v1/chat/completions';
+        const baseEndpoint = config.endpoint.endsWith('/chat/completions')
+          ? config.endpoint
+          : `${config.endpoint}/chat/completions`;
+        url = baseEndpoint;
         headers['Authorization'] = `Bearer ${config.apiKey}`;
       } else if (provider === 'claude') {
         url = 'https://api.anthropic.com/v1/messages';

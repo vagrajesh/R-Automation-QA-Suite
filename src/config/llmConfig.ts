@@ -77,9 +77,9 @@ export const LLM_MODELS: Record<LLMProvider, LLMModel[]> = {
       contextWindow: 32768,
     },
     {
-      id: 'openai/gpt-oss-20b',
-      name: 'OpenAI GPT-OSS 20B',
-      description: 'Open-source language model by OpenAI',
+      id: 'openai/gpt-oss-120b',
+      name: 'openai/gpt-oss-120b',
+      description: 'Open-source reasoning model by OpenAI',
       contextWindow: 8192,
     },
     {
