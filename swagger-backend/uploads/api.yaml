@@ -1,0 +1,239 @@
+openapi: 3.0.3
+info:
+  title: User Management API
+  description: REST API for managing application users
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@company.com
+
+servers:
+  - url: https://api.company.com/v1
+    description: Production Server
+  - url: https://staging.api.company.com/v1
+    description: Staging Server
+
+tags:
+  - name: Users
+    description: User Management APIs
+
+paths:
+
+  /users:
+    get:
+      tags:
+        - Users
+      summary: Get all users
+      description: Fetch all registered users
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+          example: 1
+        - name: size
+          in: query
+          schema:
+            type: integer
+          example: 10
+      responses:
+        '200':
+          description: Users fetched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+
+    post:
+      tags:
+        - Users
+      summary: Create new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input
+
+  /users/{id}:
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "1023"
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+
+    put:
+      tags:
+        - Users
+      summary: Update user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated successfully
+
+    delete:
+      tags:
+        - Users
+      summary: Delete user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: User deleted successfully
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "1023"
+        name:
+          type: string
+          example: "John Doe"
+        email:
+          type: string
+          example: "john@gmail.com"
+        role:
+          type: string
+          example: "ADMIN"
+        active:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-12-01T10:15:30Z"
+
+    UserListResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+          example: 50
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+
+    CreateUserRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          example: "Jane Smith"
+        email:
+          type: string
+          example: "jane@gmail.com"
+        password:
+          type: string
+          example: "Password@123"
+        role:
+          type: string
+          example: "USER"
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        active:
+          type: boolean
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          example: "john@gmail.com"
+        password:
+          type: string
+          example: "Password@123"
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        expiresIn:
+          type: integer
+          example: 3600

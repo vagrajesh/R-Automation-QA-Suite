@@ -1,0 +1,24 @@
+Endpoint: POST /pet/{petId}
+
+Validation Rules:
+
+1. petId (path parameter)
+   - Data type: integer
+   - Allowed range: 1 to 100 (inclusive)
+   - Must not be null
+   - Values less than 1 → 400 Bad Request
+   - Values greater than 100 → 400 Bad Request
+   - Non-numeric values → 400 Bad Request
+
+2. name (request body field)
+   - Data type: string
+   - Must not contain numeric characters (0–9)
+   - Allowed characters: alphabetic characters and spaces only
+   - Must not be null or empty
+   - Min length: 1 character
+   - Max length: 50 characters
+   - Names containing digits → 400 Bad Request
+
+Expected Error Response:
+- HTTP Status: 400 Bad Request
+- Error message should clearly indicate which field failed validation

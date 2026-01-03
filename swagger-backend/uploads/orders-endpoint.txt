@@ -1,0 +1,51 @@
+/users/{userId}/orders:
+  get:
+    summary: Get orders for a user
+    description: Returns all orders placed by a specific user
+    tags:
+      - Orders
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+          example: 101
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum: [PLACED, SHIPPED, DELIVERED, CANCELLED]
+          example: PLACED
+    responses:
+      "200":
+        description: List of user orders
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                required:
+                  - orderId
+                  - amount
+                  - status
+                properties:
+                  orderId:
+                    type: string
+                    example: ORD-1001
+                  amount:
+                    type: number
+                    format: double
+                    example: 249.99
+                  status:
+                    type: string
+                    enum: [PLACED, SHIPPED, DELIVERED, CANCELLED]
+                  createdAt:
+                    type: string
+                    format: date-time
+                    example: "2025-02-01T12:30:00Z"
+      "404":
+        description: User not found
+      "401":
+        description: Unauthorized

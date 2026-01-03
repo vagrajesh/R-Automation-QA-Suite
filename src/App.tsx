@@ -20,6 +20,7 @@ import { RequirementAnalysis } from './components/RequirementAnalysis';
 import { Settings } from './components/Settings';
 import { TestCases } from './components/TestCases';
 import { TestCasesGenerator } from './components/TestCasesGenerator';
+import { SwaggerAPI } from './components/SwaggerAPI';
 import { StatusBadge } from './components/StatusBadge';
 import { llmService } from './services/llmService';
 import { LLM_PROVIDERS, type LLMProvider } from './config/llmConfig';
@@ -43,12 +44,12 @@ const menuItems: MenuItem[] = [
   },
   {
     id: 3,
-    title: 'Test Data Generator',
+    title: 'Swagger - API Testcase Generator',
     icon: <Database className="w-5 h-5" />,
   },
-  {
+ /* {
     id: 4,
-    title: 'Swagger - API',
+    title: 'Test Data Generator',
     icon: <Zap className="w-5 h-5" />,
   },
   {
@@ -90,7 +91,7 @@ const menuItems: MenuItem[] = [
     id: 12,
     title: 'Test Cases',
     icon: <List className="w-5 h-5" />,
-  },
+  },*/
   {
     id: 13,
     title: 'Settings',
@@ -214,6 +215,8 @@ function App() {
               <RequirementAnalysis />
             ) : selectedMenu === 2 ? (
               <TestCasesGenerator />
+            ) : selectedMenu === 3 ? (
+              <SwaggerAPI />
             ) : selectedMenu === 12 ? (
               <TestCases />
             ) : selectedMenu === 13 ? (
