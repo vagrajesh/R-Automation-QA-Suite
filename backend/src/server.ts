@@ -350,6 +350,324 @@ app.get('/api/servicenow/stories', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Helper function to split and format assertions
+ */
+function splitAndFormatAssertions(assertionText: string): string[] {
+  if (!assertionText) return [];
+
+  // Split by common assertion delimiters: semicolon, "and", period
+  const assertions = assertionText
+    .split(/[;]|(?:\s+and\s+)|(?:\s*\.\s*)/)
+    .map((s: string) => s.trim())
+    .filter((s: string) => s.length > 0);
+
+  return assertions.map((assertion: string) => {
+    // Add action verb if missing
+    const actionVerbs = ['Verify', 'Check', 'Validate', 'Ensure', 'Confirm', 'Assert', 'Should'];
+    const startsWithVerb = actionVerbs.some(verb => 
+      assertion.toLowerCase().startsWith(verb.toLowerCase())
+    );
+
+    if (!startsWithVerb) {
+      // Determine appropriate verb based on assertion content
+      if (assertion.toLowerCase().includes('disabled') || assertion.toLowerCase().includes('hidden') || assertion.toLowerCase().includes('not ')) {
+        return `Verify ${assertion}`;
+      } else if (assertion.toLowerCase().includes('show') || assertion.toLowerCase().includes('display') || assertion.toLowerCase().includes('appear')) {
+        return `Verify ${assertion}`;
+      } else if (assertion.toLowerCase().includes('error') || assertion.toLowerCase().includes('message')) {
+        return `Check ${assertion}`;
+      } else {
+        return `Verify ${assertion}`;
+      }
+    }
+
+    return assertion;
+  });
+}
+
+/**
+ * POST /api/feature-file/generate
+ * Generate Gherkin Feature File from test cases with optional LLM enhancement
+ */
+app.post('/api/feature-file/generate', async (req: Request, res: Response) => {
+  try {
+    const { testCases, story, featureName, llmProvider } = req.body;
+
+    if (!testCases || !Array.isArray(testCases) || testCases.length === 0) {
+      return res.status(400).json({ error: 'testCases array is required and must not be empty' });
+    }
+
+    const scenarioName = generateScenarioName(testCases);
+    const feature = featureName || story?.title || 'Generated Feature';
+
+    let content = `Feature: ${feature}\n`;
+    
+    if (story?.epicTitle) {
+      content += `  Epic: ${story.epicTitle}\n`;
+    }
+    
+    if (story?.description) {
+      content += `  ${story.description}\n`;
+    }
+    
+    content += '\n';
+
+    // Extract steps from first test case for Given/When/Then
+    if (testCases.length > 0) {
+      const firstTestCase = testCases[0];
+      const steps = firstTestCase.steps || [];
+
+      content += `  Scenario Outline: ${scenarioName}\n`;
+
+      // Organize steps by Given/When/Then
+      const givenSteps: string[] = [];
+      const whenSteps: string[] = [];
+      const thenSteps: Array<{ step: string; assertion?: string }> = [];
+
+      steps.forEach((step: any, index: number) => {
+        const stepText = step.step.trim();
+        const ratio = steps.length > 1 ? index / (steps.length - 1) : 0;
+
+        if (ratio < 0.33) {
+          givenSteps.push(stepText);
+        } else if (ratio < 0.67) {
+          whenSteps.push(stepText);
+        } else {
+          thenSteps.push({
+            step: stepText,
+            assertion: step.expected_result?.trim(),
+          });
+        }
+      });
+
+      // Output Given steps
+      givenSteps.forEach((step) => {
+        content += `    Given ${step}\n`;
+      });
+
+      // Output When steps
+      whenSteps.forEach((step) => {
+        content += `    When ${step}\n`;
+      });
+
+      // Output Then steps with split assertions
+      thenSteps.forEach((stepObj, idx) => {
+        if (idx === 0) {
+          content += `    Then ${stepObj.step}\n`;
+        } else {
+          content += `    And ${stepObj.step}\n`;
+        }
+        
+        // Split and output each assertion as a separate step
+        if (stepObj.assertion) {
+          const assertions = splitAndFormatAssertions(stepObj.assertion);
+          assertions.forEach((assertion: string) => {
+            content += `    And ${assertion}\n`;
+          });
+        }
+      });
+
+      // Extract dynamic example columns from test data
+      const exampleColumns = extractExampleColumns(testCases);
+      const columnHeaders = Array.from(exampleColumns.keys());
+
+      if (columnHeaders.length > 0) {
+        content += '\n    Examples:\n';
+        content += `      | ${columnHeaders.join(' | ')} |\n`;
+
+        testCases.forEach((testCase: any) => {
+          const values = columnHeaders.map((header) => exampleColumns.get(header)?.get(testCase.id) || '-');
+          content += `      | ${values.join(' | ')} |\n`;
+        });
+      }
+    }
+
+    // If LLM provider specified, enhance with LLM
+    if (llmProvider && llmProvider !== 'none') {
+      try {
+        content = await enhanceFeatureFileWithLLM(content, testCases, story, llmProvider);
+      } catch (llmError) {
+        console.warn('[Feature File] LLM enhancement failed, returning base content:', llmError);
+        // Continue with base content if LLM fails
+      }
+    }
+
+    const lines = content.split('\n').length;
+    const scenarios = (content.match(/Scenario Outline:/g) || []).length;
+    const examplesCount = testCases.length;
+
+    return res.json({
+      featureFile: content,
+      stats: {
+        lines,
+        scenarios,
+        examplesCount,
+      },
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return res.status(500).json({ error: `Feature file generation failed: ${errorMessage}` });
+  }
+});
+
+/**
+ * Helper: Generate scenario name from test cases
+ */
+function generateScenarioName(testCases: any[]): string {
+  if (testCases.length === 1) {
+    return `Verify ${testCases[0].name}`;
+  }
+  const types = [...new Set(testCases.map((tc: any) => tc.test_type))];
+  return `Execute ${types.length === 1 ? types[0] : 'multiple'} test scenarios`;
+}
+
+/**
+ * Helper: Extract example columns from test cases
+ */
+function extractExampleColumns(testCases: any[]): Map<string, Map<string, string>> {
+  const columns = new Map<string, Map<string, string>>();
+
+  testCases.forEach((testCase: any) => {
+    if (!testCase.steps || testCase.steps.length === 0) return;
+
+    // Extract test data from steps
+    testCase.steps.forEach((step: any) => {
+      if (!step.test_data) return;
+
+      // Parse test_data format: "field_name: value" or just "value"
+      const parts = step.test_data.split(':');
+      if (parts.length === 2) {
+        const key = sanitizeForTable(parts[0].trim());
+        const value = sanitizeForTable(parts[1].trim());
+
+        if (!columns.has(key)) {
+          columns.set(key, new Map());
+        }
+        columns.get(key)!.set(testCase.id, value);
+      }
+    });
+
+    // Add test case metadata columns
+    if (!columns.has('test_case')) {
+      columns.set('test_case', new Map());
+    }
+    columns.get('test_case')!.set(testCase.id, sanitizeForTable(testCase.name));
+
+    if (!columns.has('expected_result')) {
+      columns.set('expected_result', new Map());
+    }
+    const lastStep = testCase.steps[testCase.steps.length - 1];
+    columns.get('expected_result')!.set(testCase.id, sanitizeForTable(lastStep?.expected_result || ''));
+
+    if (!columns.has('priority')) {
+      columns.set('priority', new Map());
+    }
+    columns.get('priority')!.set(testCase.id, testCase.priority);
+
+    if (!columns.has('type')) {
+      columns.set('type', new Map());
+    }
+    columns.get('type')!.set(testCase.id, testCase.test_type);
+  });
+
+  return columns;
+}
+
+/**
+ * Helper: Sanitize text for table display
+ */
+function sanitizeForTable(text: string): string {
+  if (!text) return '-';
+  return text.replace(/\|/g, ' ').replace(/\n/g, ' ').substring(0, 50);
+}
+
+/**
+ * Helper: Enhance feature file with LLM
+ */
+async function enhanceFeatureFileWithLLM(
+  baseContent: string,
+  testCases: any[],
+  _story: any,
+  provider: string
+): Promise<string> {
+  try {
+    // Get LLM configuration from environment
+    let url = '';
+    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    let model = '';
+
+    if (provider === 'azure-openai') {
+      const endpoint = process.env.VITE_AZURE_OPENAI_API_ENDPOINT;
+      const apiKey = process.env.VITE_AZURE_OPENAI_API_KEY;
+      const deploymentName = process.env.VITE_AZURE_OPENAI_DEPLOYMENT;
+
+      if (!endpoint || !apiKey || !deploymentName) {
+        throw new Error('Azure OpenAI not configured');
+      }
+
+      const baseUrl = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
+      url = `${baseUrl}openai/deployments/${deploymentName}/chat/completions?api-version=2024-02-15-preview`;
+      headers['api-key'] = apiKey;
+      model = deploymentName;
+    } else if (provider === 'openai') {
+      const apiKey = process.env.VITE_OPENAI_API_KEY;
+      if (!apiKey) throw new Error('OpenAI API key not configured');
+
+      url = 'https://api.openai.com/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+      model = 'gpt-4o-mini';
+    } else if (provider === 'groq') {
+      const apiKey = process.env.VITE_GROQ_API_KEY;
+      if (!apiKey) throw new Error('Groq API key not configured');
+
+      url = 'https://api.groq.com/openai/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+      model = 'mixtral-8x7b-32768';
+    } else {
+      throw new Error(`Provider ${provider} not supported`);
+    }
+
+    const testCasesList = testCases.map((tc: any) => `- ${tc.name}: ${tc.short_description}`).join('\n');
+
+    const prompt = `Enhance this Gherkin feature file to be more professional and comprehensive. Keep the Scenario Outline structure and Examples table intact, but improve the step descriptions to be more specific and clear.
+
+Test Cases Summary:
+${testCasesList}
+
+Current Feature File:
+${baseContent}
+
+Please:
+1. Make Given/When/Then steps more specific and detailed
+2. Use proper Gherkin conventions
+3. Keep the Examples table structure unchanged
+4. Return only the enhanced feature file content without any markdown or extra text`;
+
+    const response = await axios.post(
+      url,
+      {
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 2048,
+      },
+      { headers }
+    );
+
+    const enhancedContent = response.data.choices[0]?.message?.content;
+    if (!enhancedContent) {
+      throw new Error('No content in LLM response');
+    }
+
+    // Clean up markdown if present
+    return enhancedContent.replace(/^```[\w]*\n/m, '').replace(/\n```\s*$/m, '').trim();
+  } catch (error) {
+    // Log but don't throw - return base content instead
+    console.warn('[Feature File LLM] Enhancement failed:', error instanceof Error ? error.message : error);
+    return baseContent;
+  }
+}
 
 // Extract description helper
 function extractDescription(desc: any): string {

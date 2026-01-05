@@ -3,6 +3,7 @@ import { TestTubes, Sparkles, Copy, Check, AlertCircle, Loader, RefreshCw, Chevr
 import { llmService } from '../services/llmService';
 import { fetchAllStories, type Story } from '../services/integrationService';
 import { getModelsByProvider, type LLMProvider } from '../config/llmConfig';
+import { FeatureFileGenerator } from './FeatureFileGenerator';
 
 interface StepData {
   order: number;
@@ -60,6 +61,7 @@ export function TestCasesGenerator() {
   const [expandedTestCaseId, setExpandedTestCaseId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedTestCaseIds, setSelectedTestCaseIds] = useState<Set<string>>(new Set());
+  const [showFeatureFileModal, setShowFeatureFileModal] = useState(false);
 
   const configuredProviders = llmService.getConfiguredProviders();
 
@@ -109,9 +111,12 @@ export function TestCasesGenerator() {
 
   const handleGenerateFeatureFile = () => {
     const selectedCases = generatedTestCases.filter(tc => selectedTestCaseIds.has(tc.id));
-    console.log('[TestCases] Generate Feature File:', selectedCases);
-    setSuccess(`Ready to generate Feature File for ${selectedCases.length} test case(s)`);
-    setTimeout(() => setSuccess(null), 3000);
+    if (selectedCases.length === 0) {
+      setError('Please select at least one test case');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+    setShowFeatureFileModal(true);
   };
 
   const loadStories = async () => {
@@ -761,6 +766,17 @@ Requirements:
           <li>• Select test cases and export them to CSV, Excel, or generate Gherkin Feature files</li>
         </ul>
       </div>
+
+      {showFeatureFileModal && (
+        <FeatureFileGenerator
+          testCases={Array.from(selectedTestCaseIds)
+            .map((id) => generatedTestCases.find((tc) => tc.id === id))
+            .filter((tc): tc is GeneratedTestCase => tc !== undefined)}
+          story={selectedStory}
+          onClose={() => setShowFeatureFileModal(false)}
+          currentLLMProvider={selectedProvider}
+        />
+      )}
     </div>
   );
 }
