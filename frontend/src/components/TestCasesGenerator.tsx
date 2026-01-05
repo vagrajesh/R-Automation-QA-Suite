@@ -2,24 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { TestTubes, Sparkles, Copy, Check, AlertCircle, Loader, RefreshCw, ChevronDown, Send, Download, FileText } from 'lucide-react';
 import { llmService } from '../services/llmService';
 import { fetchAllStories, type Story } from '../services/integrationService';
-import { LLM_PROVIDERS, getModelsByProvider, type LLMProvider } from '../config/llmConfig';
-
-interface TestData {
-  name: string;
-  short_description: string;
-  description: string;
-  test_type: string;
-  priority: string;
-  state: string;
-}
-
-interface VersionData {
-  version: string;
-  state: string;
-  short_description: string;
-  description: string;
-  priority: string;
-}
+import { getModelsByProvider, type LLMProvider } from '../config/llmConfig';
 
 interface StepData {
   order: number;
@@ -30,14 +13,14 @@ interface StepData {
 
 interface GeneratedTestCase {
   id: string;
-  name?: string;
-  test_type?: string;
-  priority?: string;
-  description?: string;
-  testData?: TestData;
-  versionData?: VersionData;
-  stepsData?: StepData[];
-  [key: string]: unknown; // Allow any additional properties from LLM response
+  name: string;
+  short_description: string;
+  description: string;
+  test_type: string;
+  priority: string;
+  state: string;
+  version?: string;
+  steps: StepData[];
 }
 
 export function TestCasesGenerator() {
@@ -46,7 +29,6 @@ export function TestCasesGenerator() {
   const [loadingStories, setLoadingStories] = useState(false);
   const [storiesError, setStoriesError] = useState<string | null>(null);
 
-  // Load persisted provider and model from localStorage
   const getPersistentProvider = (): LLMProvider => {
     const saved = localStorage.getItem('selected_llm_provider');
     const configuredProviders = llmService.getConfiguredProviders();
@@ -67,8 +49,8 @@ export function TestCasesGenerator() {
     return availableModels[0]?.id || 'gpt-4-turbo';
   };
 
-  const [selectedProvider, setSelectedProvider] = useState<LLMProvider>(getPersistentProvider());
-  const [selectedModel, setSelectedModel] = useState(getPersistentModel(selectedProvider));
+  const [selectedProvider, _setSelectedProvider] = useState<LLMProvider>(getPersistentProvider());
+  const [selectedModel, _setSelectedModel] = useState(getPersistentModel(selectedProvider));
   const [generatedTestCases, setGeneratedTestCases] = useState<GeneratedTestCase[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,19 +62,15 @@ export function TestCasesGenerator() {
   const [selectedTestCaseIds, setSelectedTestCaseIds] = useState<Set<string>>(new Set());
 
   const configuredProviders = llmService.getConfiguredProviders();
-  const availableModels = getModelsByProvider(selectedProvider);
 
-  // Load stories on component mount
   useEffect(() => {
     loadStories();
   }, []);
 
-  // Persist provider selection
   useEffect(() => {
     localStorage.setItem('selected_llm_provider', selectedProvider);
   }, [selectedProvider]);
 
-  // Persist model selection
   useEffect(() => {
     localStorage.setItem(`selected_llm_model_${selectedProvider}`, selectedModel);
   }, [selectedModel, selectedProvider]);
@@ -190,27 +168,19 @@ SOURCE: ${selectedStory.source.toUpperCase()}
 
 IMPORTANT: Return ONLY valid JSON with NO markdown formatting, NO code blocks, NO \`\`\` markers. Just raw JSON.
 
-Generate test cases in the following JSON format:
+Generate test cases in the following FLAT JSON format (NO NESTED OBJECTS):
 
 {
   "test_cases": [
     {
-      "testData": {
-        "name": "Test Case Name",
-        "short_description": "Brief description",
-        "description": "Detailed test case description",
-        "test_type": "Positive",
-        "priority": "High",
-        "state": "draft"
-      },
-      "versionData": {
-        "version": "1.0",
-        "state": "draft",
-        "short_description": "Brief description",
-        "description": "Version description",
-        "priority": "High"
-      },
-      "stepsData": [
+      "name": "Test Case Name",
+      "short_description": "Brief description",
+      "description": "Detailed test case description",
+      "test_type": "Positive",
+      "priority": "High",
+      "state": "draft",
+      "version": "1.0",
+      "steps": [
         {
           "order": 100,
           "step": "Step description",
@@ -223,32 +193,31 @@ Generate test cases in the following JSON format:
 }
 
 Requirements:
-- Each test case must have testData with name, short_description, description, test_type, priority, and state
-- Include versionData with version numbering and descriptive information
-- Include stepsData array with ordered steps (order field: 100, 200, 300, etc.)
+- Each test case MUST have: name, short_description, description, test_type, priority, state, version, steps
+- short_description and description MUST start with an action verb (Verify, Check, Validate, Test, Ensure, Confirm, etc.)
+- Examples: "Verify user can login with valid credentials", "Check that error message displays", "Validate page loads successfully"
+- NO nested testData or versionData objects - use flat properties only
+- Include steps array with ordered steps (order field: 100, 200, 300, etc.)
 - Each step must have: order, step, expected_result, and test_data fields
 - Priority values: "Critical", "High", "Medium", "Low"
 - test_type values: "Positive", "Negative", "End to End", "Edge Cases"
 - Return valid JSON object with a "test_cases" array containing exactly ${numTestCases} test cases
-- DO NOT wrap the JSON in markdown code blocks (no \`\`\`json, no \`\`\`)
+- DO NOT wrap the JSON in markdown code blocks (no \`\`\`json)
 - DO NOT add any text before or after the JSON
 - Return ONLY the JSON object`;
 
-      // Construct endpoint URL based on provider
       let url = '';
       let headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
 
       if (provider === 'azure-openai') {
-        // Azure OpenAI requires specific URL format
         const endpoint = config.endpoint.endsWith('/') ? config.endpoint : `${config.endpoint}/`;
         const deploymentName = (config as any).deploymentName || selectedModel;
         const apiVersion = (config as any).apiVersion || '2024-02-15-preview';
         url = `${endpoint}openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
         headers['api-key'] = config.apiKey;
       } else {
-        // Standard OpenAI-compatible endpoint (Groq, TestLeaf, etc.)
         const baseEndpoint = config.endpoint.endsWith('/chat/completions')
           ? config.endpoint
           : `${config.endpoint}/chat/completions`;
@@ -268,8 +237,6 @@ Requirements:
         max_tokens: provider === 'groq' ? 1024 : 2048,
       };
 
-      console.log(`[TestCases] Calling ${provider} API:`, { url, model: selectedModel, maxTokens: requestBody.max_tokens });
-
       const response = await fetch(url, {
         method: 'POST',
         headers,
@@ -280,15 +247,11 @@ Requirements:
         let errorDetail = response.statusText;
         try {
           const errorBody = await response.json();
-          console.error(`[TestCases] API Error Response:`, errorBody);
           errorDetail = errorBody.error?.message || errorBody.message || JSON.stringify(errorBody).substring(0, 200);
         } catch {
           try {
             errorDetail = await response.text();
-            console.error(`[TestCases] API Error (text):`, errorDetail);
-          } catch {
-            console.error(`[TestCases] Could not read error response`);
-          }
+          } catch {}
         }
         throw new Error(`LLM API error (${response.status}): ${errorDetail}`);
       }
@@ -300,58 +263,30 @@ Requirements:
         throw new Error('Empty response from LLM - no content generated');
       }
 
-      console.log('[TestCases] LLM Response length:', content.length);
-
-      // Simple and robust JSON parser
-      const extractAndParseJSON = (text: string): { test_cases: Omit<GeneratedTestCase, 'id'>[] } => {
-        // Strip markdown code blocks if present
-        let cleanText = text
-          .replace(/^```[\w]*\n/m, '')
-          .replace(/\n```\s*$/m, '')
-          .trim();
-
-        console.log('[TestCases] Attempting to parse JSON directly...');
-
-        // Strategy 1: Try to parse the entire content as JSON
+      const extractAndParseJSON = (text: string) => {
+        let cleanText = text.replace(/^```[\w]*\n/m, '').replace(/\n```\s*$/m, '').trim();
         try {
           const parsed = JSON.parse(cleanText);
           if (parsed.test_cases && Array.isArray(parsed.test_cases) && parsed.test_cases.length > 0) {
-            console.log('[TestCases] ✓ Success! Parsed', parsed.test_cases.length, 'test cases');
             return parsed;
           }
-        } catch (e) {
-          console.log('[TestCases] Direct parse failed:', e instanceof Error ? e.message : 'unknown');
-        }
+        } catch {}
 
-        // Strategy 2: Extract test_cases array only using regex
         try {
           const match = cleanText.match(/"test_cases"\s*:\s*(\[[\s\S]*\])/);
           if (match && match[1]) {
             const arrayStr = match[1];
             const testCasesArray = JSON.parse(arrayStr);
             if (Array.isArray(testCasesArray) && testCasesArray.length > 0) {
-              console.log('[TestCases] ✓ Success! Parsed array with', testCasesArray.length, 'test cases');
               return { test_cases: testCasesArray };
             }
           }
-        } catch (e) {
-          console.log('[TestCases] Array extraction failed:', e instanceof Error ? e.message : 'unknown');
-        }
+        } catch {}
 
-        console.error('[TestCases] Could not parse JSON. Content:', cleanText.substring(0, 1000));
         throw new Error('Could not extract valid JSON with test_cases from response');
       };
 
-      let parsedResponse: { test_cases: Omit<GeneratedTestCase, 'id'>[] };
-      try {
-        parsedResponse = extractAndParseJSON(content);
-      } catch (parseError) {
-        console.error('[TestCases] Failed to parse response. Full content length:', content.length);
-        console.error('[TestCases] First 8000 chars:', content.substring(0, 1000));
-        console.error('[TestCases] Parse error:', parseError);
-        throw new Error(`Failed to parse test cases from LLM response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
-      }
-
+      const parsedResponse = extractAndParseJSON(content);
       const testCases = parsedResponse.test_cases;
       
       if (!Array.isArray(testCases) || testCases.length === 0) {
@@ -370,12 +305,12 @@ Requirements:
       setSuccess(`Successfully generated ${formattedTestCases.length} test cases!`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
-      console.error('[TestCases] Error:', errorMessage);
       setError(`Failed to generate test cases: ${errorMessage}`);
     } finally {
       setIsGenerating(false);
     }
   };
+
   const copyToClipboard = (testCase: GeneratedTestCase) => {
     const text = JSON.stringify(testCase, null, 2);
     navigator.clipboard.writeText(text);
@@ -383,52 +318,20 @@ Requirements:
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const getPriorityColor = (priority: string) => {
-    const lowerPriority = priority.toLowerCase();
-    if (lowerPriority === 'critical') return 'bg-red-100 text-red-700 border-red-300';
-    if (lowerPriority === 'high') return 'bg-orange-100 text-orange-700 border-orange-300';
-    if (lowerPriority === 'medium') return 'bg-yellow-100 text-yellow-700 border-yellow-300';
-    if (lowerPriority === 'low') return 'bg-green-100 text-green-700 border-green-300';
-    return 'bg-slate-100 text-slate-700 border-slate-300';
-  };
-
-  const getTestTypeColor = (testType: string) => {
-    const lowerType = testType.toLowerCase();
-    if (lowerType === 'positive') return 'bg-green-100 text-green-700 border-green-300';
-    if (lowerType === 'negative') return 'bg-red-100 text-red-700 border-red-300';
-    if (lowerType === 'end to end') return 'bg-blue-100 text-blue-700 border-blue-300';
-    if (lowerType === 'edge cases') return 'bg-orange-100 text-orange-700 border-orange-300';
-    return 'bg-slate-100 text-slate-700 border-slate-300';
-  };
-
-  const getSourceBadgeColor = (source: string) => {
-    return source === 'jira' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-purple-100 text-purple-700 border-purple-300';
-  };
-
   const parseAcceptanceCriteria = (html: string): string[] => {
     if (!html) return [];
-    
-    // Create a temporary div to parse HTML
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = html;
-    
-    // Extract all list items
     const listItems = tempDiv.querySelectorAll('li');
     const items: string[] = [];
-    
     listItems.forEach((li) => {
       const text = li.textContent?.trim() || '';
-      if (text) {
-        items.push(text);
-      }
+      if (text) items.push(text);
     });
-    
-    // If no list items found, try to split by common delimiters
     if (items.length === 0) {
       const cleanText = html
-        .replace(/<[^>]*>/g, '') // Remove HTML tags
+        .replace(/<[^>]*>/g, '')
         .replace(/&#\d+;/g, (match) => {
-          // Decode HTML entities like &#34; to "
           const code = parseInt(match.substring(2, match.length - 1));
           return String.fromCharCode(code);
         })
@@ -439,10 +342,8 @@ Requirements:
         .split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0);
-      
       return cleanText;
     }
-    
     return items;
   };
 
@@ -457,7 +358,6 @@ Requirements:
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Stories Panel */}
         <div className="lg:col-span-1 space-y-4">
           <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6 space-y-4">
             <div className="flex items-center justify-between">
@@ -535,12 +435,7 @@ Requirements:
                         : 'border-slate-200 hover:border-blue-300'
                     }`}
                   >
-                    <div className="flex items-start gap-2">
-                      <span className={`px-2 py-1 text-xs font-semibold rounded border ${getSourceBadgeColor(story.source)}`}>
-                        {story.source.toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="text-sm font-semibold text-slate-900 mt-1 truncate">{story.key}</div>
+                    <div className="text-sm font-semibold text-slate-900 truncate">{story.key}</div>
                     <div className="text-xs text-slate-600 mt-1 line-clamp-2">{story.title}</div>
                   </button>
                 ))}
@@ -549,7 +444,6 @@ Requirements:
           </div>
         </div>
 
-        {/* Selected Story Panel with Generate Button */}
         <div className="lg:col-span-1 space-y-4">
           <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-4">
@@ -626,18 +520,22 @@ Requirements:
                       <p className="text-slate-500 italic mt-1">No acceptance criteria provided</p>
                     )}
                   </div>
-                  {selectedStory && (selectedStory.epicKey || selectedStory.epicTitle) && (
-                    <div className="space-y-2 pt-3 border-t border-slate-200">
-                      <h4 className="font-semibold text-slate-900">Epic Information</h4>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <span className="font-semibold text-slate-700">Epic Number:</span>
-                          <p className="text-slate-600 mt-1">{selectedStory.epicKey || '-'}</p>
-                        </div>
-                        <div>
-                          <span className="font-semibold text-slate-700">Epic Short Description:</span>
-                          <p className="text-slate-600 mt-1 truncate" title={selectedStory.epicTitle}>{selectedStory.epicTitle || '-'}</p>
-                        </div>
+                  {(selectedStory.epicKey || selectedStory.epicTitle) && (
+                    <div className="border-t pt-4 mt-4">
+                      <h4 className="font-semibold text-slate-900 mb-3">Epic Information</h4>
+                      <div className="space-y-2">
+                        {selectedStory.epicKey && (
+                          <div>
+                            <span className="font-semibold text-slate-700">Epic Number:</span>
+                            <p className="text-slate-600 mt-1">{selectedStory.epicKey}</p>
+                          </div>
+                        )}
+                        {selectedStory.epicTitle && (
+                          <div>
+                            <span className="font-semibold text-slate-700">Epic Short Description:</span>
+                            <p className="text-slate-600 mt-1">{selectedStory.epicTitle}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -668,7 +566,6 @@ Requirements:
         </div>
       </div>
 
-      {/* Generated Test Cases - Table View with Expandable Details */}
       {generatedTestCases.length > 0 && (
         <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6 space-y-4">
           <h3 className="font-semibold text-slate-900">Generated Test Cases ({generatedTestCases.length})</h3>
@@ -682,7 +579,6 @@ Requirements:
                       checked={selectedTestCaseIds.size === generatedTestCases.length && generatedTestCases.length > 0}
                       onChange={handleSelectAllTestCases}
                       className="w-4 h-4 cursor-pointer accent-blue-600"
-                      title="Select all test cases"
                     />
                   </th>
                   <th className="px-4 py-3 text-center w-10"></th>
@@ -690,27 +586,21 @@ Requirements:
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Description</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Priority</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Version</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">State</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Story ID</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Epic Number</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Epic Short Description</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700" title="Epic Short Description">Epic Description</th>
                   <th className="px-4 py-3 text-center font-semibold text-slate-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {generatedTestCases.map((testCase) => (
                   <React.Fragment key={testCase.id}>
-                    <tr
-                      className="hover:bg-slate-50 transition-colors cursor-pointer"
-                      onClick={() => setExpandedTestCaseId(expandedTestCaseId === testCase.id ? null : testCase.id)}
-                    >
+                    <tr className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 text-center">
                         <input
                           type="checkbox"
                           checked={selectedTestCaseIds.has(testCase.id)}
                           onChange={() => handleSelectTestCase(testCase.id)}
-                          onClick={(e) => e.stopPropagation()}
                           className="w-4 h-4 cursor-pointer accent-blue-600"
                         />
                       </td>
@@ -719,36 +609,34 @@ Requirements:
                           className={`w-5 h-5 text-slate-400 transition-transform inline ${
                             expandedTestCaseId === testCase.id ? 'rotate-180' : ''
                           }`}
+                          onClick={() => setExpandedTestCaseId(expandedTestCaseId === testCase.id ? null : testCase.id)}
                         />
                       </td>
-                      <td className="px-4 py-3 font-semibold text-slate-900 max-w-xs truncate">{testCase.testData?.name || testCase.name || 'Unnamed Test'}</td>
-                      <td className="px-4 py-3 text-slate-600 max-w-sm truncate">{testCase.testData?.short_description || 'No description'}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-900 max-w-xs truncate">{testCase.name}</td>
+                      <td className="px-4 py-3 text-slate-600 max-w-sm truncate">{testCase.short_description}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded border inline-block ${getTestTypeColor(testCase.testData?.test_type || testCase.test_type || 'Manual')}`}>
-                          {testCase.testData?.test_type || testCase.test_type || 'Manual'}
+                        <span className="px-2 py-1 text-xs font-semibold rounded bg-blue-100 text-blue-700 border border-blue-300 inline-block">
+                          {testCase.test_type}
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded border inline-block ${getPriorityColor(testCase.testData?.priority || testCase.priority || 'Medium')}`}>
-                          {testCase.testData?.priority || testCase.priority || 'Medium'}
+                        <span className="px-2 py-1 text-xs font-semibold rounded bg-orange-100 text-orange-700 border border-orange-300 inline-block">
+                          {testCase.priority}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm font-mono text-slate-700">{testCase.versionData?.version || '1.0'}</td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-1 text-xs font-semibold rounded bg-slate-100 text-slate-700 border border-slate-300 inline-block">
-                          {testCase.testData?.state || 'draft'}
-                        </span>
+                      <td className="px-4 py-3 text-slate-600 font-mono text-sm" title={selectedStory?.key}>
+                        {selectedStory?.key || '—'}
                       </td>
-                      <td className="px-4 py-3 text-sm font-semibold text-slate-900 max-w-xs truncate">{selectedStory?.key || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600 max-w-xs truncate">{selectedStory?.epicKey || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600 max-w-sm truncate" title={selectedStory?.epicTitle}>{selectedStory?.epicTitle || '-'}</td>
+                      <td className="px-4 py-3 text-slate-600 max-w-xs truncate" title={selectedStory?.epicKey}>
+                        {selectedStory?.epicKey || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600 max-w-sm truncate" title={selectedStory?.epicTitle}>
+                        {selectedStory?.epicTitle || '—'}
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            copyToClipboard(testCase);
-                          }}
-                          className="text-slate-400 hover:text-slate-600 transition-colors inline-block"
+                          onClick={() => copyToClipboard(testCase)}
+                          className="text-slate-400 hover:text-slate-600 transition-colors"
                           title="Copy to clipboard"
                         >
                           {copiedId === testCase.id ? (
@@ -763,43 +651,51 @@ Requirements:
                     {/* Expandable Row - Full Test Case Details */}
                     {expandedTestCaseId === testCase.id && (
                       <tr className="bg-slate-50 border-l-4 border-blue-500">
-                        <td colSpan={11} className="px-4 py-4">
+                        <td colSpan={6} className="px-4 py-4">
                           <div className="space-y-6">
-                            {/* Test Steps Section */}
-                            {(testCase.stepsData && testCase.stepsData.length > 0) ? (
-                            <div className="space-y-3">
-                              <h4 className="font-bold text-slate-900 text-md border-b-2 border-purple-500 pb-2">Test Steps ({testCase.stepsData.length})</h4>
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-xs border-collapse">
-                                  <thead className="bg-slate-200 border border-slate-300">
-                                    <tr>
-                                      <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300 w-16">Step #</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300">Step Description</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300">Expected Result</th>
-                                      <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300 w-32">Test Data</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-300">
-                                    {testCase.stepsData
-                                      .sort((a, b) => a.order - b.order)
-                                      .map((step, idx) => (
-                                        <tr key={idx} className="bg-white hover:bg-slate-50 border border-slate-300">
-                                          <td className="px-3 py-2 text-slate-700 font-bold border border-slate-300 bg-slate-50">{step.order}</td>
-                                          <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal">{step.step}</td>
-                                          <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal">{step.expected_result}</td>
-                                          <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal text-xs bg-slate-50 font-mono">
-                                            {step.test_data || '—'}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                  </tbody>
-                                </table>
+                            {testCase.description ? (
+                              <div className="space-y-2">
+                                <h4 className="font-bold text-slate-900">Description</h4>
+                                <p className="text-sm text-slate-700 bg-white p-3 rounded border border-slate-200">
+                                  {String(testCase.description)}
+                                </p>
                               </div>
-                            </div>
+                            ) : null}
+
+                            {(testCase.steps && testCase.steps.length > 0) ? (
+                              <div className="space-y-3">
+                                <h4 className="font-bold text-slate-900 text-md border-b-2 border-purple-500 pb-2">Test Steps ({testCase.steps.length})</h4>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead className="bg-slate-200 border border-slate-300">
+                                      <tr>
+                                        <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300 w-16">Step #</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300">Step Description</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300">Expected Result</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300 w-32">Test Data</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-300">
+                                      {testCase.steps
+                                        .sort((a, b) => a.order - b.order)
+                                        .map((step, idx) => (
+                                          <tr key={idx} className="bg-white hover:bg-slate-50 border border-slate-300">
+                                            <td className="px-3 py-2 text-slate-700 font-bold border border-slate-300 bg-slate-50">{step.order}</td>
+                                            <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal">{step.step}</td>
+                                            <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal">{step.expected_result}</td>
+                                            <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal text-xs bg-slate-50 font-mono">
+                                              {step.test_data || '—'}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
                             ) : (
-                            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                              No test steps available. The LLM did not include step details in the response.
-                            </div>
+                              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                                No test steps available. The LLM did not include step details in the response.
+                              </div>
                             )}
                           </div>
                         </td>
@@ -810,6 +706,7 @@ Requirements:
               </tbody>
             </table>
           </div>
+
           {generatedTestCases.length > 0 && (
             <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
               <div className="flex items-center justify-between gap-4">
@@ -828,7 +725,6 @@ Requirements:
                     <button
                       onClick={handleSendToServiceNow}
                       className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                      title="Send selected test cases to ServiceNow"
                     >
                       <Send className="w-4 h-4" />
                       Send to ServiceNow
@@ -836,7 +732,6 @@ Requirements:
                     <button
                       onClick={handleExportCSVExcel}
                       className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
-                      title="Export selected test cases to CSV/Excel"
                     >
                       <Download className="w-4 h-4" />
                       Export CSV/Excel
@@ -844,7 +739,6 @@ Requirements:
                     <button
                       onClick={handleGenerateFeatureFile}
                       className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
-                      title="Generate Feature File from selected test cases"
                     >
                       <FileText className="w-4 h-4" />
                       Generate Feature File
@@ -857,7 +751,6 @@ Requirements:
         </div>
       )}
 
-      {/* Info Box */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h4 className="font-semibold text-blue-900 mb-2">💡 How it works</h4>
         <ul className="text-sm text-blue-800 space-y-1">
@@ -865,11 +758,9 @@ Requirements:
           <li>• Select a story from the list to view its details</li>
           <li>• Choose an LLM provider and model for test case generation</li>
           <li>• AI generates comprehensive test cases with structured steps and test data</li>
-          <li>• Click on a test case row to expand and view full details including all test steps</li>
-          <li>• Copy individual test cases to use in your test management system</li>
+          <li>• Select test cases and export them to CSV, Excel, or generate Gherkin Feature files</li>
         </ul>
       </div>
     </div>
   );
 }
-
