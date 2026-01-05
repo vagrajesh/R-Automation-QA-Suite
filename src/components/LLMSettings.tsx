@@ -14,15 +14,15 @@ import { llmService } from '../services/llmService';
 interface LLMIntegrationState {
   provider: LLMProvider;
   config: LLMConfig | null;
-  isConnected: boolean;
+  hasConfig: boolean; // true if config exists (e.g., from env) but not necessarily tested
+  isConnected: boolean; // true once saved/connected by user
   isTesting: boolean;
   testResult: { success: boolean; message: string } | null;
   error: string | null;
 }
 
 /**
- * LLMSettings Component - Production-ready LLM provider management
- * Supports OpenAI, Groq, Azure OpenAI, Claude, and TestLeaf
+ * LLMSettings Component - Provider selection + single active provider editing
  */
 export function LLMSettings() {
   const [integrations, setIntegrations] = useState<LLMIntegrationState[]>([]);
@@ -31,6 +31,7 @@ export function LLMSettings() {
   const [expandedModel, setExpandedModel] = useState<LLMProvider | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<LLMProvider | null>(null);
 
   // Initialize from environment on mount
   useEffect(() => {
@@ -41,7 +42,8 @@ export function LLMSettings() {
       return {
         provider,
         config,
-        isConnected: !!config?.apiKey,
+        hasConfig: !!config?.apiKey,
+        isConnected: false, // do NOT assume connected -- require user action
         isTesting: false,
         testResult: null,
         error: null,
@@ -51,9 +53,6 @@ export function LLMSettings() {
     llmService.clearCache();
   }, []);
 
-  /**
-   * Validate form inputs
-   */
   const validateForm = useCallback((provider: LLMProvider): boolean => {
     const errors: Record<string, string> = {};
 
@@ -91,10 +90,11 @@ export function LLMSettings() {
     return Object.keys(errors).length === 0;
   }, [tempConfig]);
 
-  /**
-   * Handle edit mode for a provider
-   */
   const handleEdit = useCallback((provider: LLMProvider) => {
+    if (selectedProvider && selectedProvider !== provider) {
+      return;
+    }
+
     const integration = integrations.find((i) => i.provider === provider);
     if (integration?.config) {
       setTempConfig({ ...integration.config });
@@ -109,13 +109,13 @@ export function LLMSettings() {
     }
     setEditingProvider(provider);
     setFormErrors({});
-  }, [integrations]);
+  }, [integrations, selectedProvider]);
 
-  /**
-   * Save configuration
-   */
   const handleSave = useCallback(
     async (provider: LLMProvider) => {
+      if (selectedProvider && selectedProvider !== provider) {
+        return;
+      }
       if (!validateForm(provider)) {
         return;
       }
@@ -136,7 +136,7 @@ export function LLMSettings() {
         setIntegrations((prev) =>
           prev.map((i) =>
             i.provider === provider
-              ? { ...i, config: newConfig, isConnected: true, testResult: null, error: null }
+              ? { ...i, config: newConfig, isConnected: true, hasConfig: true, testResult: null, error: null }
               : i
           )
         );
@@ -151,13 +151,15 @@ export function LLMSettings() {
         setIsSaving(false);
       }
     },
-    [tempConfig, validateForm]
+    [tempConfig, validateForm, selectedProvider]
   );
 
-  /**
-   * Test connection to provider
-   */
   const handleTestConnection = useCallback(async (provider: LLMProvider) => {
+    // Only allow testing for the selected provider
+    if (!selectedProvider || selectedProvider !== provider) {
+      return;
+    }
+
     setIntegrations((prev) =>
       prev.map((i) =>
         i.provider === provider ? { ...i, isTesting: true, testResult: null } : i
@@ -168,30 +170,28 @@ export function LLMSettings() {
 
     setIntegrations((prev) =>
       prev.map((i) =>
-        i.provider === provider ? { ...i, isTesting: false, testResult: result } : i
+        i.provider === provider ? { ...i, isTesting: false, testResult: result, isConnected: result.success } : i
       )
     );
-  }, []);
+  }, [selectedProvider]);
 
-  /**
-   * Disconnect provider
-   */
   const handleDisconnect = useCallback((provider: LLMProvider) => {
+    // Only allow disconnect for selected provider
+    if (!selectedProvider || selectedProvider !== provider) {
+      return;
+    }
     llmService.removeConfig(provider);
     setIntegrations((prev) =>
       prev.map((i) =>
         i.provider === provider
-          ? { ...i, config: null, isConnected: false, testResult: null, error: null }
+          ? { ...i, config: null, hasConfig: false, isConnected: false, testResult: null, error: null }
           : i
       )
     );
     setEditingProvider(null);
     setFormErrors({});
-  }, []);
+  }, [selectedProvider]);
 
-  /**
-   * Handle model selection change
-   */
   const handleModelChange = useCallback((modelId: string) => {
     setTempConfig((prev) => ({ ...prev, model: modelId }));
     setFormErrors((prev) => {
@@ -201,6 +201,8 @@ export function LLMSettings() {
     });
   }, []);
 
+  const providerOptions = Object.keys(LLM_PROVIDERS) as LLMProvider[];
+
   return (
     <div className="space-y-6">
       <div>
@@ -208,7 +210,25 @@ export function LLMSettings() {
           <Brain className="w-6 h-6 inline-block mr-2 text-blue-600" />
           LLM Model Integration
         </h3>
-        <p className="text-slate-600">Configure and manage language model providers for AI-powered features</p>
+        <p className="text-slate-600">Select one provider to enable editing and connection. Other providers will be disabled.</p>
+      </div>
+
+      {/* Provider selector */}
+      <div className="max-w-md">
+        <label className="block text-sm font-semibold text-slate-700 mb-2">Select LLM Provider to enable</label>
+        <select
+          value={selectedProvider || ''}
+          onChange={(e) => setSelectedProvider((e.target.value as LLMProvider) || null)}
+          className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 transition-all border-slate-300 focus:ring-blue-500 bg-white"
+        >
+          <option value="">-- Choose provider to enable --</option>
+          {providerOptions.map((p) => (
+            <option key={p} value={p}>
+              {LLM_PROVIDERS[p].name}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-slate-500 mt-2">Only the selected provider can be configured and connected.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -220,11 +240,16 @@ export function LLMSettings() {
             ? getModelInfo(integration.provider, integration.config.model)
             : null;
 
+          const disabled = !!selectedProvider && selectedProvider !== integration.provider;
+
           return (
             <div
               key={integration.provider}
-              className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow"
+              className={`relative bg-white border border-slate-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow ${disabled ? 'opacity-60 pointer-events-none' : ''}`}
             >
+              {disabled && (
+                <div className="absolute inset-0 pointer-events-none" />
+              )}
               {/* Header */}
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-start gap-3">
@@ -235,12 +260,16 @@ export function LLMSettings() {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  {integration.isConnected && (
+                  {integration.isConnected ? (
                     <div className="flex items-center gap-1 bg-green-50 text-green-700 px-3 py-1 rounded-full text-xs font-semibold">
                       <Check className="w-3 h-3" />
                       Connected
                     </div>
-                  )}
+                  ) : integration.hasConfig ? (
+                    <div className="flex items-center gap-1 bg-yellow-50 text-yellow-800 px-3 py-1 rounded-full text-xs font-semibold">
+                      ⚠️ Configured
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -526,7 +555,8 @@ export function LLMSettings() {
                   <div className="flex gap-2 flex-wrap">
                     <button
                       onClick={() => handleEdit(integration.provider)}
-                      className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors font-semibold text-sm"
+                      disabled={!!selectedProvider && selectedProvider !== integration.provider}
+                      className={`flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-lg transition-colors font-semibold text-sm ${!!selectedProvider && selectedProvider !== integration.provider ? 'opacity-70 cursor-not-allowed' : 'hover:bg-blue-700'}`}
                     >
                       <Plus className="w-4 h-4" />
                       {integration.isConnected ? 'Edit' : 'Configure'}
@@ -536,7 +566,7 @@ export function LLMSettings() {
                       <>
                         <button
                           onClick={() => handleTestConnection(integration.provider)}
-                          disabled={integration.isTesting}
+                          disabled={integration.isTesting || !!selectedProvider && selectedProvider !== integration.provider}
                           className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors font-semibold text-sm"
                         >
                           {integration.isTesting ? (
@@ -554,6 +584,7 @@ export function LLMSettings() {
 
                         <button
                           onClick={() => handleDisconnect(integration.provider)}
+                          disabled={!!selectedProvider && selectedProvider !== integration.provider}
                           className="flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors font-semibold text-sm"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -586,7 +617,7 @@ export function LLMSettings() {
           <li>• Each provider supports multiple models with different capabilities</li>
           <li>• Test connections to verify API credentials before using in production</li>
           <li>• Model pricing and context window information is displayed for reference</li>
-          <li>• Your QA Suite will automatically load configured providers on startup</li>
+          <li>• Only the selected provider will be used by the app; others remain disabled</li>
         </ul>
       </div>
 
@@ -595,7 +626,7 @@ export function LLMSettings() {
         <h4 className="font-semibold text-slate-900 mb-2">Active Integrations</h4>
         <div className="text-sm text-slate-700">
           {integrations.filter((i) => i.isConnected).length === 0 ? (
-            <p className="text-slate-500">No integrations configured yet. Configure one to get started.</p>
+            <p className="text-slate-500">No integrations connected yet. Select a provider, configure it, and save to connect.</p>
           ) : (
             <ul className="space-y-1">
               {integrations

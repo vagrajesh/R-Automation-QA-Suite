@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { TestTubes, Sparkles, Copy, Check, AlertCircle, Loader, RefreshCw, ChevronDown } from 'lucide-react';
+import { TestTubes, Sparkles, Copy, Check, AlertCircle, Loader, RefreshCw, ChevronDown, Send, Download, FileText } from 'lucide-react';
 import { llmService } from '../services/llmService';
 import { fetchAllStories, type Story } from '../services/integrationService';
 import { LLM_PROVIDERS, getModelsByProvider, type LLMProvider } from '../config/llmConfig';
@@ -72,6 +72,7 @@ export function TestCasesGenerator() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expandedTestCaseId, setExpandedTestCaseId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [selectedTestCaseIds, setSelectedTestCaseIds] = useState<Set<string>>(new Set());
 
   const configuredProviders = llmService.getConfiguredProviders();
   const availableModels = getModelsByProvider(selectedProvider);
@@ -90,6 +91,45 @@ export function TestCasesGenerator() {
   useEffect(() => {
     localStorage.setItem(`selected_llm_model_${selectedProvider}`, selectedModel);
   }, [selectedModel, selectedProvider]);
+
+  const handleSelectTestCase = (testCaseId: string) => {
+    const newSelected = new Set(selectedTestCaseIds);
+    if (newSelected.has(testCaseId)) {
+      newSelected.delete(testCaseId);
+    } else {
+      newSelected.add(testCaseId);
+    }
+    setSelectedTestCaseIds(newSelected);
+  };
+
+  const handleSelectAllTestCases = () => {
+    if (selectedTestCaseIds.size === generatedTestCases.length) {
+      setSelectedTestCaseIds(new Set());
+    } else {
+      setSelectedTestCaseIds(new Set(generatedTestCases.map(tc => tc.id)));
+    }
+  };
+
+  const handleSendToServiceNow = () => {
+    const selectedCases = generatedTestCases.filter(tc => selectedTestCaseIds.has(tc.id));
+    console.log('[TestCases] Send to ServiceNow:', selectedCases);
+    setSuccess(`Ready to send ${selectedCases.length} test case(s) to ServiceNow`);
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
+  const handleExportCSVExcel = () => {
+    const selectedCases = generatedTestCases.filter(tc => selectedTestCaseIds.has(tc.id));
+    console.log('[TestCases] Export to CSV/Excel:', selectedCases);
+    setSuccess(`Ready to export ${selectedCases.length} test case(s) to CSV/Excel`);
+    setTimeout(() => setSuccess(null), 3000);
+  };
+
+  const handleGenerateFeatureFile = () => {
+    const selectedCases = generatedTestCases.filter(tc => selectedTestCaseIds.has(tc.id));
+    console.log('[TestCases] Generate Feature File:', selectedCases);
+    setSuccess(`Ready to generate Feature File for ${selectedCases.length} test case(s)`);
+    setTimeout(() => setSuccess(null), 3000);
+  };
 
   const loadStories = async () => {
     setLoadingStories(true);
@@ -143,7 +183,9 @@ STATUS: ${selectedStory.status}
 PRIORITY: ${selectedStory.priority}
 SOURCE: ${selectedStory.source.toUpperCase()}
 
-Generate test cases in the following JSON format with a "test_cases" array:
+IMPORTANT: Return ONLY valid JSON with NO markdown formatting, NO code blocks, NO \`\`\` markers. Just raw JSON.
+
+Generate test cases in the following JSON format:
 
 {
   "test_cases": [
@@ -182,9 +224,10 @@ Requirements:
 - Each step must have: order, step, expected_result, and test_data fields
 - Priority values: "Critical", "High", "Medium", "Low"
 - test_type values: "Positive", "Negative", "End to End", "Edge Cases"
-- Return valid JSON array within the response
-
-Return a valid JSON object with a "test_cases" array containing exactly ${numTestCases} test cases.`;
+- Return valid JSON object with a "test_cases" array containing exactly ${numTestCases} test cases
+- DO NOT wrap the JSON in markdown code blocks (no \`\`\`json, no \`\`\`)
+- DO NOT add any text before or after the JSON
+- Return ONLY the JSON object`;
 
       // Construct endpoint URL based on provider
       let url = '';
@@ -208,41 +251,109 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
         headers['Authorization'] = `Bearer ${config.apiKey}`;
       }
 
+      const requestBody = {
+        model: selectedModel,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: provider === 'groq' ? 1024 : 2048,
+      };
+
+      console.log(`[TestCases] Calling ${provider} API:`, { url, model: selectedModel, maxTokens: requestBody.max_tokens });
+
       const response = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          model: selectedModel,
-          messages: [
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          temperature: 0.7,
-          max_tokens: 4000,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error(`LLM API error: ${response.statusText}`);
+        let errorDetail = response.statusText;
+        try {
+          const errorBody = await response.json();
+          console.error(`[TestCases] API Error Response:`, errorBody);
+          errorDetail = errorBody.error?.message || errorBody.message || JSON.stringify(errorBody).substring(0, 200);
+        } catch {
+          try {
+            errorDetail = await response.text();
+            console.error(`[TestCases] API Error (text):`, errorDetail);
+          } catch {
+            console.error(`[TestCases] Could not read error response`);
+          }
+        }
+        throw new Error(`LLM API error (${response.status}): ${errorDetail}`);
       }
 
       const data = await response.json() as { choices: Array<{ message: { content: string } }> };
       const content = data.choices[0]?.message?.content || '';
 
-      // Parse the response - look for JSON object with test_cases array
-      const jsonMatch = content.match(/\{[\s\S]*"test_cases"[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Could not parse test cases from LLM response');
+      if (!content) {
+        throw new Error('Empty response from LLM - no content generated');
       }
 
-      const parsedResponse = JSON.parse(jsonMatch[0]) as { test_cases: Omit<GeneratedTestCase, 'id'>[] };
+      console.log('[TestCases] LLM Response length:', content.length);
+
+      // Simple and robust JSON parser
+      const extractAndParseJSON = (text: string): { test_cases: Omit<GeneratedTestCase, 'id'>[] } => {
+        // Strip markdown code blocks if present
+        let cleanText = text
+          .replace(/^```[\w]*\n/m, '')
+          .replace(/\n```\s*$/m, '')
+          .trim();
+
+        console.log('[TestCases] Attempting to parse JSON directly...');
+
+        // Strategy 1: Try to parse the entire content as JSON
+        try {
+          const parsed = JSON.parse(cleanText);
+          if (parsed.test_cases && Array.isArray(parsed.test_cases) && parsed.test_cases.length > 0) {
+            console.log('[TestCases] ✓ Success! Parsed', parsed.test_cases.length, 'test cases');
+            return parsed;
+          }
+        } catch (e) {
+          console.log('[TestCases] Direct parse failed:', e instanceof Error ? e.message : 'unknown');
+        }
+
+        // Strategy 2: Extract test_cases array only using regex
+        try {
+          const match = cleanText.match(/"test_cases"\s*:\s*(\[[\s\S]*\])/);
+          if (match && match[1]) {
+            const arrayStr = match[1];
+            const testCasesArray = JSON.parse(arrayStr);
+            if (Array.isArray(testCasesArray) && testCasesArray.length > 0) {
+              console.log('[TestCases] ✓ Success! Parsed array with', testCasesArray.length, 'test cases');
+              return { test_cases: testCasesArray };
+            }
+          }
+        } catch (e) {
+          console.log('[TestCases] Array extraction failed:', e instanceof Error ? e.message : 'unknown');
+        }
+
+        console.error('[TestCases] Could not parse JSON. Content:', cleanText.substring(0, 1000));
+        throw new Error('Could not extract valid JSON with test_cases from response');
+      };
+
+      let parsedResponse: { test_cases: Omit<GeneratedTestCase, 'id'>[] };
+      try {
+        parsedResponse = extractAndParseJSON(content);
+      } catch (parseError) {
+        console.error('[TestCases] Failed to parse response. Full content length:', content.length);
+        console.error('[TestCases] First 8000 chars:', content.substring(0, 1000));
+        console.error('[TestCases] Parse error:', parseError);
+        throw new Error(`Failed to parse test cases from LLM response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+      }
+
       const testCases = parsedResponse.test_cases;
       
       if (!Array.isArray(testCases) || testCases.length === 0) {
         throw new Error('No test cases found in response');
       }
+
+      console.log('[TestCases] Successfully extracted test cases:', testCases.length);
 
       const formattedTestCases = testCases.map((tc, idx) => ({
         ...tc,
@@ -253,6 +364,7 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
       setSuccess(`Successfully generated ${formattedTestCases.length} test cases!`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      console.error('[TestCases] Error:', errorMessage);
       setError(`Failed to generate test cases: ${errorMessage}`);
     } finally {
       setIsGenerating(false);
@@ -558,7 +670,16 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
             <table className="w-full text-sm">
               <thead className="bg-slate-100 border-b border-slate-300">
                 <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-700 w-10"></th>
+                  <th className="px-4 py-3 text-center w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedTestCaseIds.size === generatedTestCases.length && generatedTestCases.length > 0}
+                      onChange={handleSelectAllTestCases}
+                      className="w-4 h-4 cursor-pointer accent-blue-600"
+                      title="Select all test cases"
+                    />
+                  </th>
+                  <th className="px-4 py-3 text-center w-10"></th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Test Case Name</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Description</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
@@ -580,6 +701,15 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
                       onClick={() => setExpandedTestCaseId(expandedTestCaseId === testCase.id ? null : testCase.id)}
                     >
                       <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedTestCaseIds.has(testCase.id)}
+                          onChange={() => handleSelectTestCase(testCase.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-4 h-4 cursor-pointer accent-blue-600"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-center cursor-pointer">
                         <ChevronDown
                           className={`w-5 h-5 text-slate-400 transition-transform inline ${
                             expandedTestCaseId === testCase.id ? 'rotate-180' : ''
@@ -669,6 +799,50 @@ Return a valid JSON object with a "test_cases" array containing exactly ${numTes
               </tbody>
             </table>
           </div>
+          {generatedTestCases.length > 0 && (
+            <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+              <div className="flex items-center justify-between gap-4">
+                <div className="text-sm font-medium text-slate-700">
+                  {selectedTestCaseIds.size > 0 ? (
+                    <>
+                      <span className="font-semibold text-blue-600">{selectedTestCaseIds.size}</span>
+                      {' '}test case{selectedTestCaseIds.size !== 1 ? 's' : ''} selected
+                    </>
+                  ) : (
+                    <span className="text-slate-500">Select test cases to perform bulk actions</span>
+                  )}
+                </div>
+                {selectedTestCaseIds.size > 0 && (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleSendToServiceNow}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                      title="Send selected test cases to ServiceNow"
+                    >
+                      <Send className="w-4 h-4" />
+                      Send to ServiceNow
+                    </button>
+                    <button
+                      onClick={handleExportCSVExcel}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                      title="Export selected test cases to CSV/Excel"
+                    >
+                      <Download className="w-4 h-4" />
+                      Export CSV/Excel
+                    </button>
+                    <button
+                      onClick={handleGenerateFeatureFile}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                      title="Generate Feature File from selected test cases"
+                    >
+                      <FileText className="w-4 h-4" />
+                      Generate Feature File
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

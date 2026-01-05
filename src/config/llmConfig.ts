@@ -71,16 +71,16 @@ export const LLM_MODELS: Record<LLMProvider, LLMModel[]> = {
   ],
   groq: [
     {
-      id: 'mixtral-8x7b-32768',
-      name: 'Mixtral 8x7B',
-      description: 'Fast, open-source mixture of experts model',
-      contextWindow: 32768,
-    },
-    {
       id: 'openai/gpt-oss-120b',
       name: 'openai/gpt-oss-120b',
       description: 'Open-source reasoning model by OpenAI',
       contextWindow: 8192,
+    },
+    {
+      id: 'qwen/qwen3-32b',
+      name: 'qwen/qwen3-32b',
+      description: 'Fast, open-source mixture of experts model',
+      contextWindow: 32768,
     },
     {
       id: 'llama-3.1-8b-instant',

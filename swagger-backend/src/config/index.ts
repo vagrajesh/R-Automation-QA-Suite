@@ -20,7 +20,7 @@ export const config = {
     provider: (process.env.MODEL_PROVIDER || 'groq') as 'groq' | 'openai' | 'anthropic',
     groq: {
       apiKey: process.env.GROQ_API_KEY || '',
-      model: process.env.GROQ_MODEL || 'mixtral-8x7b-32768'
+      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
     },
     openai: {
       apiKey: process.env.OPENAI_API_KEY || '',
