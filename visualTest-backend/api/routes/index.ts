@@ -62,7 +62,7 @@ const executionManager = new ConcurrentExecutionManager(
 // Initialize controllers
 const projectController = new ProjectController(projectRepository);
 const baselineController = new BaselineController(baselineRepository, projectRepository, fileStorageService);
-const testController = new TestController(testRunRepository, projectRepository, executionManager);
+const testController = new TestController(testRunRepository, projectRepository, baselineRepository, executionManager);
 const pixelDiffController = new PixelDiffController(pixelDiffService, baselineRepository, projectRepository, fileStorageService, playwrightService);
 const utilityController = new UtilityController();
 const healthController = new HealthController();

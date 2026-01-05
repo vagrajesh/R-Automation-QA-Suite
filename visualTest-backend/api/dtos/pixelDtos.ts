@@ -10,7 +10,7 @@ export const PixelDiffDto = z.object({
     height: z.number().positive()
   }).optional(),
   waitTime: z.number().positive().optional(),
-  threshold: z.number().min(0).max(1).optional().default(0.1),
+  threshold: z.number().min(0).optional().default(0.1),
 });
 
 export type PixelDiffRequest = z.infer<typeof PixelDiffDto>;

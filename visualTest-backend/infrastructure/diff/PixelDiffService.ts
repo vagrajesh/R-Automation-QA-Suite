@@ -167,7 +167,7 @@ export class PixelDiffService {
 
         const delta = Math.sqrt((r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2) / (255 * Math.sqrt(3));
         
-        if (delta > threshold) {
+        if (delta > (threshold / 100)) {
           diffPixels++;
         }
       }
@@ -184,7 +184,7 @@ export class PixelDiffService {
         diffPixels,
         totalPixels,
         diffImage,
-        isDifferent: mismatchPercentage > 0, // Any difference
+        isDifferent: mismatchPercentage > threshold,
       };
     } catch (error) {
       throw new Error(`Pixel diff failed: ${error}`);

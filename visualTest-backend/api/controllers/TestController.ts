@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { TestRun } from '../../domain/models/TestRun';
 import { ITestRunRepository } from '../../domain/repositories/ITestRunRepository';
 import { IProjectRepository } from '../../domain/repositories/IProjectRepository';
+import { IBaselineRepository } from '../../domain/repositories/IBaselineRepository';
 import { ConcurrentExecutionManager } from '../../application/execution/ConcurrentExecutionManager';
 import { RunTestRequest } from '../dtos/testDtos';
 import { NotFoundError } from '../../core/errors/AppError';
@@ -12,6 +13,7 @@ export class TestController {
   constructor(
     private testRunRepository: ITestRunRepository,
     private projectRepository: IProjectRepository,
+    private baselineRepository: IBaselineRepository,
     private executionManager: ConcurrentExecutionManager
   ) {}
 
@@ -25,6 +27,14 @@ export class TestController {
         throw new NotFoundError('Project not found');
       }
 
+      // Verify baseline exists if provided
+      if (data.baselineId) {
+        const baseline = await this.baselineRepository.findById(data.baselineId);
+        if (!baseline) {
+          throw new NotFoundError('Baseline not found');
+        }
+      }
+
       // Create test run
       const testRun = TestRun.create({
         id: uuidv4(),
@@ -34,6 +44,11 @@ export class TestController {
         priority: data.priority,
       });
 
+      // Add baselineId to config if provided
+      if (data.baselineId) {
+        (testRun.config as any).baselineId = data.baselineId;
+      }
+
       // Save to database
       await this.testRunRepository.create(testRun);
 
@@ -42,7 +57,7 @@ export class TestController {
         logger.error(`Test execution failed: ${testRun.id}`, error);
       });
 
-      logger.info('Test queued:', { testId: testRun.id, projectId: data.projectId });
+      logger.info('Test queued:', { testId: testRun.id, projectId: data.projectId, baselineId: data.baselineId });
 
       res.status(202).json({
         status: 'success',
@@ -67,50 +82,18 @@ export class TestController {
         throw new NotFoundError('Test not found');
       }
 
+      // Extract diffResult from nested result or direct property
+      const diffResult = (testRun as any).diffResult || 
+                        (testRun.result && (testRun.result as any).diffResult);
+
+      const responseData = {
+        ...testRun,
+        diffResult: diffResult
+      };
+
       res.json({
         status: 'success',
-        data: {
-          id: testRun.id,
-          projectId: testRun.projectId,
-          status: testRun.status,
-          priority: testRun.priority,
-          config: testRun.config,
-          retryCount: testRun.retryCount,
-          maxRetries: testRun.maxRetries,
-          createdAt: testRun.createdAt,
-          startedAt: testRun.startedAt,
-          completedAt: testRun.completedAt,
-          result: testRun.result ? {
-            metadata: testRun.result.metadata,
-            testResult: testRun.result.testResult ? {
-              ...testRun.result.testResult,
-              screenshots: undefined
-            } : undefined,
-            diffResult: testRun.result.diffResult ? {
-              isDifferent: testRun.result.diffResult.isDifferent,
-              confidence: testRun.result.diffResult.confidence,
-              method: testRun.result.diffResult.method,
-              pixelAnalysis: testRun.result.diffResult.pixelAnalysis,
-              aiAnalysis: testRun.result.diffResult.aiAnalysis,
-              changes: testRun.result.diffResult.changes,
-              explanation: testRun.result.diffResult.explanation,
-              aiExplanation: testRun.result.diffResult.aiExplanation,
-              metadata: testRun.result.diffResult.metadata
-            } : undefined
-          } : undefined,
-          testResult: (testRun as any).testResult,
-          diffResult: (testRun as any).diffResult ? {
-            isDifferent: (testRun as any).diffResult.isDifferent,
-            confidence: (testRun as any).diffResult.confidence,
-            method: (testRun as any).diffResult.method,
-            pixelAnalysis: (testRun as any).diffResult.pixelAnalysis,
-            aiAnalysis: (testRun as any).diffResult.aiAnalysis,
-            changes: (testRun as any).diffResult.changes,
-            explanation: (testRun as any).diffResult.explanation,
-            aiExplanation: (testRun as any).diffResult.aiExplanation,
-            metadata: (testRun as any).diffResult.metadata
-          } : undefined,
-        },
+        data: responseData,
       });
     } catch (error) {
       next(error);

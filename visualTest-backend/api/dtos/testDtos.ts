@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const RunTestDto = z.object({
   projectId: z.string().uuid(),
+  baselineId: z.string().uuid().optional(),
   url: z.string().url(),
   viewport: z.object({
     width: z.number().positive(),
