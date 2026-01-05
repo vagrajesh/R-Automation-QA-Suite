@@ -146,8 +146,19 @@ export class TestExecutionService {
   }
 
   private async findMatchingBaseline(testRun: TestRun) {
-    // For now, find baseline by URL matching
-    // In a real implementation, you'd have more sophisticated matching logic
+    // Check if a specific baseline ID was provided
+    const baselineId = (testRun.config as any).baselineId;
+    
+    if (baselineId) {
+      logger.info('Looking for specific baseline', { baselineId });
+      const baseline = await this.baselineRepository.findById(baselineId);
+      if (baseline && baseline.isActive) {
+        logger.info('Found specific baseline', { baselineId: baseline.id });
+        return baseline;
+      }
+    }
+    
+    // Fallback to URL matching if no specific baseline ID or baseline not found
     const baselines = await this.baselineRepository.findByProjectId(testRun.projectId);
     
     // Find baseline with matching URL
@@ -159,7 +170,8 @@ export class TestExecutionService {
     logger.info('Baseline search result', {
       testUrl: testRun.config.url,
       baselinesFound: baselines.length,
-      matchingBaseline: baseline ? baseline.id : 'none'
+      matchingBaseline: baseline ? baseline.id : 'none',
+      searchMethod: baselineId ? 'specific_id_fallback_to_url' : 'url_matching'
     });
     
     return baseline;

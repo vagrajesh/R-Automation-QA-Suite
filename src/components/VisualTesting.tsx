@@ -21,6 +21,8 @@ export function VisualTesting() {
   const [showPixelCompare, setShowPixelCompare] = useState(false);
   const [showAiAnalysis, setShowAiAnalysis] = useState(false);
   const [selectedAiExplanation, setSelectedAiExplanation] = useState<any>(null);
+  const [showDiffImage, setShowDiffImage] = useState(false);
+  const [selectedDiffImage, setSelectedDiffImage] = useState<string | null>(null);
 
   useEffect(() => {
     checkConnection();
@@ -291,7 +293,6 @@ export function VisualTesting() {
                 }`}
               >
                 <div className="font-semibold text-slate-900">{project.name}</div>
-                <div className="text-xs text-slate-600 mt-1 truncate">{project.baseUrl}</div>
                 <div className="flex gap-2 mt-2">
                   <span className="text-xs bg-slate-100 px-2 py-1 rounded-full">{project.config.diffThreshold}%</span>
                   <span className={`text-xs px-2 py-1 rounded-full ${project.config.aiEnabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
@@ -327,7 +328,6 @@ export function VisualTesting() {
                 <div className="text-xs text-slate-600 mt-1">
                   📐 {baseline.metadata.viewport.width}x{baseline.metadata.viewport.height}
                 </div>
-                <div className="text-xs text-slate-500 truncate">{baseline.metadata.url}</div>
                 {baseline.tags && baseline.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {baseline.tags.map((tag, index) => (
@@ -393,7 +393,7 @@ export function VisualTesting() {
                       🎯 Confidence: {testRun.diffResult.confidence.toFixed(1)}%
                     </div>
                     {testRun.diffResult.aiExplanation && (
-                      <div className="mt-2">
+                      <div className="mt-2 flex gap-1">
                         <button
                           onClick={() => {
                             setSelectedAiExplanation(testRun.diffResult.aiExplanation);
@@ -403,6 +403,17 @@ export function VisualTesting() {
                         >
                           🤖 View AI Analysis
                         </button>
+                        {testRun.diffResult.diffImage && (
+                          <button
+                            onClick={() => {
+                              setSelectedDiffImage(testRun.diffResult.diffImage);
+                              setShowDiffImage(true);
+                            }}
+                            className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200 transition-colors"
+                          >
+                            🖼️ View Diff
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -446,6 +457,19 @@ export function VisualTesting() {
                 <div className="text-xs text-slate-500">
                   🔍 {result.diffPixels} pixels differ ({result.mismatchPercentage.toFixed(2)}%)
                 </div>
+                {result.diffImage && (
+                  <div className="mt-2">
+                    <button
+                      onClick={() => {
+                        setSelectedDiffImage(result.diffImage);
+                        setShowDiffImage(true);
+                      }}
+                      className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200 transition-colors"
+                    >
+                      🖼️ View Diff
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
             {pixelResults.length === 0 && (
@@ -724,6 +748,38 @@ export function VisualTesting() {
               <button
                 onClick={() => setShowAiAnalysis(false)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Diff Image Modal */}
+      {showDiffImage && selectedDiffImage && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-4 max-w-[90vw] max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">🖼️ Visual Diff Comparison</h3>
+              <button
+                onClick={() => setShowDiffImage(false)}
+                className="text-gray-500 hover:text-gray-700 text-xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex justify-center">
+              <img 
+                src={selectedDiffImage} 
+                alt="Visual Diff" 
+                className="max-w-full max-h-[70vh] object-contain border border-slate-200 rounded"
+              />
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => setShowDiffImage(false)}
+                className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
               >
                 Close
               </button>
