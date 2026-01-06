@@ -3,6 +3,8 @@ import {
   FileText,
   TestTubes,
   Database,
+  Eye,
+  Wand2,
   Menu,
   X,
   Settings as SettingsIcon,
@@ -12,6 +14,7 @@ import { Settings } from './components/Settings';
 import { TestCases } from './components/TestCases';
 import { TestCasesGenerator } from './components/TestCasesGenerator';
 import { SwaggerAPI } from './components/SwaggerAPI';
+import { VisualTesting } from './components/VisualTesting';
 import { StatusBadge } from './components/StatusBadge';
 import { llmService } from './services/llmService';
 import { LLM_PROVIDERS, type LLMProvider } from './config/llmConfig';
@@ -37,6 +40,16 @@ const menuItems: MenuItem[] = [
     id: 3,
     title: 'Swagger - API Testcase Generator',
     icon: <Database className="w-5 h-5" />,
+  },
+  {
+    id: 4,
+    title: 'Visual Testing',
+    icon: <Eye className="w-5 h-5" />,
+  },
+  {
+    id: 5,
+    title: 'Generate No Code',
+    icon: <Wand2 className="w-5 h-5" />,
   },
  /* {
     id: 4,
@@ -208,6 +221,8 @@ function App() {
               <TestCasesGenerator />
             ) : selectedMenu === 3 ? (
               <SwaggerAPI />
+            ) : selectedMenu === 4 ? (
+              <VisualTesting />
             ) : selectedMenu === 12 ? (
               <TestCases />
             ) : selectedMenu === 13 ? (
