@@ -56,6 +56,7 @@ export class HybridDiffEngine {
       aiThreshold?: number;
       forceAI?: boolean;
       aiProvider?: 'openai' | 'groq' | 'openai_router' | 'hybrid';
+      maskRegions?: Array<{ x: number; y: number; width: number; height: number }>;
       context?: {
         url: string;
         viewport: { width: number; height: number };
@@ -71,7 +72,12 @@ export class HybridDiffEngine {
     try {
       // Step 1: Always run pixel diff first (fast)
       logger.info('Starting pixel diff comparison');
-      const pixelResult = await this.pixelDiffService.compareImages(baselineImage, currentImage);
+      const pixelResult = await this.pixelDiffService.compareImages(
+        baselineImage,
+        currentImage,
+        pixelThreshold / 100, // Convert percentage to decimal
+        options.maskRegions
+      );
 
       // Step 2: Decide if AI analysis is needed
       const needsAI = options.forceAI || 
@@ -112,7 +118,7 @@ export class HybridDiffEngine {
       // Step 4: Generate AI explanation
       try {
         const aiExplanation = await this.explanationService.generateExplanation({
-          similarityScore: result.similarityScore,
+          similarityScore: result.pixelAnalysis.similarityScore,
           isDifferent: result.isDifferent,
           changes: result.changes,
           method: result.method,
@@ -191,7 +197,7 @@ export class HybridDiffEngine {
 
   private combineResults(
     pixelResult: PixelDiffResult,
-    aiResult?: AIDiffResult,
+    aiResult: AIDiffResult | undefined,
     metadata: {
       pixelThreshold: number;
       aiThreshold: number;

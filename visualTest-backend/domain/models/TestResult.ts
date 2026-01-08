@@ -9,23 +9,24 @@ export class TestResult implements ITestResult {
     public status: 'PASSED' | 'FAILED' | 'UNRESOLVED',
     public similarityScore: number,
     public createdAt: Date,
+    public screenshots: {
+      current: string;
+      diff?: string;
+    },
     public diffRegions?: Array<{
       x: number;
       y: number;
       width: number;
       height: number;
     }>,
-    public screenshots?: {
-      current: string;
-      diff?: string;
-    },
     public explanations?: string[],
-    public aiExplanation?: any,
     public metadata?: {
       executionTime: number;
       aiModel?: string;
       tokensUsed?: number;
-    }
+      filePaths?: any;
+    },
+    public aiExplanation?: any,
   ) {}
 
   static create(data: {
@@ -35,10 +36,10 @@ export class TestResult implements ITestResult {
     similarityScore: number;
     isDifferent?: boolean;
     diffRegions?: Array<{ x: number; y: number; width: number; height: number }>;
-    screenshots?: { current: string; diff?: string };
+    screenshots: { current: string; diff?: string };
     explanations?: string[];
     aiExplanation?: any;
-    metadata?: { executionTime: number; aiModel?: string; tokensUsed?: number };
+    metadata: { executionTime: number; aiModel?: string; tokensUsed?: number; filePaths?: any };
   }): TestResult {
     const status = data.isDifferent !== undefined 
       ? (data.isDifferent ? 'FAILED' : 'PASSED')
@@ -51,11 +52,11 @@ export class TestResult implements ITestResult {
       status,
       data.similarityScore,
       new Date(),
-      data.diffRegions,
       data.screenshots,
+      data.diffRegions,
       data.explanations,
-      data.aiExplanation,
-      data.metadata
+      data.metadata,
+      data.aiExplanation
     );
   }
 

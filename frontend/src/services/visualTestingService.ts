@@ -50,6 +50,7 @@ export interface TestRun {
     method: string;
     explanation: string;
     aiExplanation?: any;
+    diffImage?: string;
     pixelAnalysis: {
       similarityScore: number;
       mismatchPercentage: number;
@@ -100,6 +101,12 @@ export class VisualTestingService {
     viewport: { width: number; height: number };
     url: string;
     tags?: string[];
+    dynamicContent?: {
+      disableAnimations?: boolean;
+      blockAds?: boolean;
+      scrollToTriggerLazyLoad?: boolean;
+      maskSelectors?: string[];
+    };
   }): Promise<Baseline> {
     const formData = new FormData();
     formData.append('projectId', data.projectId);
@@ -108,6 +115,7 @@ export class VisualTestingService {
     formData.append('url', data.url);
     if (data.image) formData.append('image', data.image);
     if (data.tags) formData.append('tags', JSON.stringify(data.tags));
+    if (data.dynamicContent) formData.append('dynamicContent', JSON.stringify(data.dynamicContent));
 
     const response = await fetch(`${API_BASE_URL}/baselines`, {
       method: 'POST',
@@ -132,6 +140,14 @@ export class VisualTestingService {
     baselineId?: string;
     viewport?: { width: number; height: number };
     priority?: 'HIGH' | 'NORMAL' | 'LOW';
+    dynamicContent?: {
+      disableAnimations?: boolean;
+      blockAds?: boolean;
+      scrollToTriggerLazyLoad?: boolean;
+      multipleScreenshots?: boolean;
+      stabilityCheck?: boolean;
+      maskSelectors?: string[];
+    };
   }): Promise<{ testId: string; status: string; priority: string }> {
     const response = await fetch(`${API_BASE_URL}/tests/run`, {
       method: 'POST',

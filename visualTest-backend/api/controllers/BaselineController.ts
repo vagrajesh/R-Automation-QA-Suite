@@ -20,15 +20,51 @@ export class BaselineController {
     try {
       let imageBase64: string;
       
-      // Handle file upload or base64 string
+      // Handle file upload, base64 string, or URL screenshot
       if (req.file) {
         imageBase64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
       } else if (req.body.image) {
         imageBase64 = req.body.image;
+      } else if (req.body.url) {
+        // Take screenshot from URL
+        const { PlaywrightService } = await import('../../infrastructure/browser/PlaywrightService');
+        const playwrightService = new PlaywrightService();
+        await playwrightService.initialize();
+        
+        const viewport = typeof req.body.viewport === 'string' ? JSON.parse(req.body.viewport) : req.body.viewport || { width: 1500, height: 1280 };
+        
+        // Parse dynamicContent if provided
+        let dynamicContent = {};
+        if (req.body.dynamicContent) {
+          dynamicContent = typeof req.body.dynamicContent === 'string' 
+            ? JSON.parse(req.body.dynamicContent) 
+            : req.body.dynamicContent;
+        }
+        
+        const result = await playwrightService.captureScreenshot(req.body.url, viewport, { 
+          fullPage: true,
+          ignoreCSSSelectors: dynamicContent.maskSelectors || req.body.ignoreCSSSelectors,
+          ignoreRegions: req.body.ignoreRegions,
+          freezeAnimations: dynamicContent.disableAnimations || req.body.freezeAnimations,
+          waitTime: req.body.waitTime,
+          dynamicContent: {
+            disableAnimations: dynamicContent.disableAnimations || req.body.disableAnimations,
+            blockAds: dynamicContent.blockAds || req.body.blockAds,
+            scrollToTriggerLazyLoad: dynamicContent.scrollToTriggerLazyLoad || req.body.scrollToTriggerLazyLoad,
+            stabilityCheck: dynamicContent.stabilityCheck || req.body.stabilityCheck
+          }
+        });
+        console.log('Screenshot options passed:', {
+          ignoreCSSSelectors: dynamicContent.maskSelectors || req.body.ignoreCSSSelectors,
+          freezeAnimations: dynamicContent.disableAnimations || req.body.freezeAnimations
+        });
+        imageBase64 = `data:image/png;base64,${result.screenshot}`;
+        
+        await playwrightService.close();
       } else {
         return res.status(400).json({
           status: 'error',
-          message: 'Either upload an image file or provide base64 image string'
+          message: 'Provide either an image file, base64 image string, or URL for screenshot'
         });
       }
 
@@ -41,6 +77,30 @@ export class BaselineController {
         domSnapshot: req.body.domSnapshot,
         tags: typeof req.body.tags === 'string' ? JSON.parse(req.body.tags) : req.body.tags,
       };
+
+      // Parse dynamicContent if provided
+      let dynamicContent = {};
+      if (req.body.dynamicContent) {
+        dynamicContent = typeof req.body.dynamicContent === 'string' 
+          ? JSON.parse(req.body.dynamicContent) 
+          : req.body.dynamicContent;
+        console.log('Parsed dynamicContent:', dynamicContent);
+      }
+
+      // Set maskConfig from dynamicContent or direct parameters
+      const maskConfig = {
+        ignoreCSSSelectors: dynamicContent.maskSelectors || req.body.ignoreCSSSelectors,
+        ignoreRegions: req.body.ignoreRegions,
+        freezeAnimations: dynamicContent.disableAnimations || req.body.freezeAnimations,
+        waitTime: req.body.waitTime,
+        disableAnimations: dynamicContent.disableAnimations || req.body.disableAnimations,
+        blockAds: dynamicContent.blockAds || req.body.blockAds,
+        scrollToTriggerLazyLoad: dynamicContent.scrollToTriggerLazyLoad || req.body.scrollToTriggerLazyLoad,
+        stabilityCheck: dynamicContent.stabilityCheck || req.body.stabilityCheck
+      };
+      console.log('Final maskConfig:', maskConfig);
+
+      data.maskConfig = maskConfig;
 
       // Validate the processed data
       const validatedData = CreateBaselineDto.parse(data);
@@ -68,11 +128,12 @@ export class BaselineController {
         id: uuidv4(),
         projectId: validatedData.projectId,
         name: validatedData.name,
-        image: validatedData.image,
+        image: validatedData.image!,
         viewport: validatedData.viewport,
         url: validatedData.url,
         domSnapshot: validatedData.domSnapshot,
         tags: validatedData.tags,
+        maskConfig: data.maskConfig
       });
       
       baseline.version = version;
@@ -140,6 +201,31 @@ export class BaselineController {
         status: 'success',
         data: baseline,
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getImage(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const baseline = await this.baselineRepository.findById(id);
+      
+      if (!baseline) {
+        throw new NotFoundError('Baseline not found');
+      }
+
+      // Extract base64 data
+      const base64Data = baseline.image.replace(/^data:image\/\w+;base64,/, '');
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+      
+      res.set({
+        'Content-Type': 'image/png',
+        'Content-Length': imageBuffer.length,
+        'Cache-Control': 'public, max-age=86400'
+      });
+      
+      res.send(imageBuffer);
     } catch (error) {
       next(error);
     }

@@ -3,6 +3,7 @@ import { PixelDiffService } from '../../infrastructure/diff/PixelDiffService';
 import { FileStorageService } from '../../infrastructure/storage/FileStorageService';
 import { IBaselineRepository } from '../../domain/repositories/IBaselineRepository';
 import { IProjectRepository } from '../../domain/repositories/IProjectRepository';
+import { PlaywrightService } from '../../infrastructure/browser/PlaywrightService';
 import { PixelDiffRequest } from '../dtos/pixelDtos';
 import { NotFoundError } from '../../core/errors/AppError';
 import { logger } from '../../infrastructure/logging/logger';

@@ -14,12 +14,18 @@ export class PixelDiffService {
   async compareImages(
     baselineImage: string, // Base64
     currentImage: string,   // Base64
-    threshold: number = 0.01
+    threshold: number = 0.01,
+    maskRegions?: Array<{ x: number; y: number; width: number; height: number }>
   ): Promise<PixelDiffResult> {
     try {
-      // Convert base64 to buffers
+      // Convert base64 to buffers with size validation
       const baselineBuffer = Buffer.from(baselineImage.replace(/^data:image\/\w+;base64,/, ''), 'base64');
       const currentBuffer = Buffer.from(currentImage.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+
+      // Validate buffer sizes (max 20MB each)
+      if (baselineBuffer.length > 20 * 1024 * 1024 || currentBuffer.length > 20 * 1024 * 1024) {
+        throw new Error('Image too large for comparison');
+      }
 
       // Get dimensions first
       const meta1 = await sharp(baselineBuffer).metadata();
@@ -33,15 +39,31 @@ export class PixelDiffService {
       // Only resize if dimensions don't match
       if (meta1.width !== meta2.width || meta1.height !== meta2.height) {
         const resizeResult = await this.resizeToMatch(baselineBuffer, currentBuffer);
-        resizedBaseline = resizeResult.resizedBaseline;
-        resizedCurrent = resizeResult.resizedCurrent;
+        resizedBaseline = Buffer.from(resizeResult.resizedBaseline);
+        resizedCurrent = Buffer.from(resizeResult.resizedCurrent);
         width = resizeResult.width;
         height = resizeResult.height;
       }
 
-      // Parse PNG images
-      const baselinePng = PNG.sync.read(resizedBaseline);
-      const currentPng = PNG.sync.read(resizedCurrent);
+      // Parse PNG images with error handling
+      let baselinePng, currentPng;
+      try {
+        baselinePng = PNG.sync.read(resizedBaseline);
+      } catch (error) {
+        throw new Error(`Failed to parse baseline PNG: ${error}`);
+      }
+      
+      try {
+        currentPng = PNG.sync.read(resizedCurrent);
+      } catch (error) {
+        throw new Error(`Failed to parse current PNG: ${error}`);
+      }
+
+      // Validate PNG data integrity
+      if (!baselinePng.data || !currentPng.data || 
+          baselinePng.data.length !== currentPng.data.length) {
+        throw new Error('PNG data corruption detected');
+      }
 
       // Create side-by-side diff image with header
       const headerHeight = 40;
@@ -155,20 +177,33 @@ export class PixelDiffService {
         }
       }
 
-      // Count different pixels
+      // Count different pixels (with masking support)
       let diffPixels = 0;
-      for (let i = 0; i < baselinePng.data.length; i += 4) {
-        const r1 = baselinePng.data[i];
-        const g1 = baselinePng.data[i + 1];
-        const b1 = baselinePng.data[i + 2];
-        const r2 = currentPng.data[i];
-        const g2 = currentPng.data[i + 1];
-        const b2 = currentPng.data[i + 2];
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          // Check if pixel is in masked region
+          const isMasked = maskRegions?.some(region =>
+            x >= region.x && x < region.x + region.width &&
+            y >= region.y && y < region.y + region.height
+          );
 
-        const delta = Math.sqrt((r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2) / (255 * Math.sqrt(3));
-        
-        if (delta > (threshold / 100)) {
-          diffPixels++;
+          if (isMasked) {
+            continue; // Skip masked pixels
+          }
+
+          const i = (y * width + x) * 4;
+          const r1 = baselinePng.data[i];
+          const g1 = baselinePng.data[i + 1];
+          const b1 = baselinePng.data[i + 2];
+          const r2 = currentPng.data[i];
+          const g2 = currentPng.data[i + 1];
+          const b2 = currentPng.data[i + 2];
+
+          const delta = Math.sqrt((r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2) / (255 * Math.sqrt(3));
+          
+          if (delta > (threshold / 100)) {
+            diffPixels++;
+          }
         }
       }
 
