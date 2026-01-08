@@ -25,6 +25,19 @@ export const CreateBaselineDto = z.object({
   url: z.string().url(),
   domSnapshot: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  ignoreCSSSelectors: z.array(z.string()).optional(),
+  ignoreRegions: z.array(z.object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number()
+  })).optional(),
+  freezeAnimations: z.boolean().optional(),
+  waitTime: z.number().optional(),
+  disableAnimations: z.boolean().optional(),
+  blockAds: z.boolean().optional(),
+  scrollToTriggerLazyLoad: z.boolean().optional(),
+  stabilityCheck: z.boolean().optional()
 });
 
 export type CreateProjectRequest = z.infer<typeof CreateProjectDto>;

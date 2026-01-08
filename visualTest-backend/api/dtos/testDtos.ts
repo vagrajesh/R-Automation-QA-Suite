@@ -10,6 +10,14 @@ export const RunTestDto = z.object({
   }).optional(),
   priority: z.enum(['HIGH', 'NORMAL', 'LOW']).optional(),
   waitConditions: z.array(z.string()).optional(),
+  dynamicContent: z.object({
+    disableAnimations: z.boolean().optional(),
+    blockAds: z.boolean().optional(),
+    scrollToTriggerLazyLoad: z.boolean().optional(),
+    multipleScreenshots: z.boolean().optional(),
+    stabilityCheck: z.boolean().optional(),
+    maskSelectors: z.array(z.string()).optional(),
+  }).optional(),
 });
 
 export type RunTestRequest = z.infer<typeof RunTestDto>;

@@ -48,7 +48,6 @@ export function SwaggerAPI() {
   const [loadingDocument, setLoadingDocument] = useState(false);
   const [loadingFile, setLoadingFile] = useState(false);
   const [loadingUrl, setLoadingUrl] = useState(false);
-  const [loadingPrompt, setLoadingPrompt] = useState(false);
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [loadingIngest, setLoadingIngest] = useState(false);
 
@@ -106,20 +105,6 @@ export function SwaggerAPI() {
       setResults({ error: 'URL test generation failed' });
     }
     setLoadingUrl(false);
-  };
-
-  const handleGenerateFromPrompt = async () => {
-    const prompt = window.prompt('Enter custom prompt for test generation:');
-    if (!prompt) return;
-    setLoadingPrompt(true);
-    try {
-      const result = await ragApiService.generateTestsFromPrompt(prompt, docEndpoint, docTestCount, docTestType);
-      setResults(result);
-    } catch (error) {
-      console.error('Error:', error);
-      setResults({ error: 'Prompt test generation failed' });
-    }
-    setLoadingPrompt(false);
   };
 
   const handleSearchRAG = async () => {

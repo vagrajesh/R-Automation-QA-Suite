@@ -10,6 +10,14 @@ export class TestRun implements ITestRun {
       url: string;
       viewport: { width: number; height: number };
       waitConditions?: string[];
+      dynamicContent?: {
+        disableAnimations?: boolean;
+        blockAds?: boolean;
+        scrollToTriggerLazyLoad?: boolean;
+        multipleScreenshots?: boolean;
+        stabilityCheck?: boolean;
+        maskSelectors?: string[];
+      };
     },
     public retryCount: number,
     public maxRetries: number,
@@ -49,7 +57,7 @@ export class TestRun implements ITestRun {
         viewport: data.viewport ?? { width: 1920, height: 1080 },
       },
       0,
-      data.maxRetries ?? 3,
+      data.maxRetries ?? 1,
       now
     );
   }

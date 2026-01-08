@@ -9,7 +9,13 @@ export class MongoTestResultRepository implements ITestResultRepository {
   }
 
   async create(testResult: TestResult): Promise<TestResult> {
-    await this.collection.insertOne(testResult);
+    // Remove large images from database to prevent BSON overflow
+    const cleanResult = { ...testResult };
+    if (cleanResult.screenshots) {
+      delete cleanResult.screenshots;
+    }
+    
+    await this.collection.insertOne(cleanResult);
     return testResult;
   }
 
@@ -75,10 +81,11 @@ export class MongoTestResultRepository implements ITestResultRepository {
       doc.status,
       doc.similarityScore,
       doc.createdAt,
-      doc.diffRegions,
       doc.screenshots,
+      doc.diffRegions,
       doc.explanations,
-      doc.metadata
+      doc.metadata,
+      doc.aiExplanation
     );
   }
 }

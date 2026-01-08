@@ -49,6 +49,11 @@ export class TestController {
         (testRun.config as any).baselineId = data.baselineId;
       }
 
+      // Add dynamicContent to config if provided
+      if (data.dynamicContent) {
+        testRun.config.dynamicContent = data.dynamicContent;
+      }
+
       // Save to database
       await this.testRunRepository.create(testRun);
 

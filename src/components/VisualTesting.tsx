@@ -23,6 +23,8 @@ export function VisualTesting() {
   const [selectedAiExplanation, setSelectedAiExplanation] = useState<any>(null);
   const [showDiffImage, setShowDiffImage] = useState(false);
   const [selectedDiffImage, setSelectedDiffImage] = useState<string | null>(null);
+  const [showBaselineImage, setShowBaselineImage] = useState(false);
+  const [selectedBaselineId, setSelectedBaselineId] = useState<string | null>(null);
 
   useEffect(() => {
     checkConnection();
@@ -322,23 +324,42 @@ export function VisualTesting() {
           </div>
           
           <div className="space-y-3 max-h-80 overflow-y-auto">
-            {baselines.map((baseline) => (
-              <div key={baseline.id} className="p-4 border border-slate-200 rounded-xl hover:border-green-300 hover:shadow-md transition-all duration-200">
-                <div className="font-semibold text-slate-900">{baseline.name}</div>
-                <div className="text-xs text-slate-600 mt-1">
-                  📐 {baseline.metadata.viewport.width}x{baseline.metadata.viewport.height}
-                </div>
-                {baseline.tags && baseline.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {baseline.tags.map((tag, index) => (
-                      <span key={index} className="text-xs bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 px-2 py-1 rounded-full">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
+            <div className="text-sm text-blue-600 font-medium">DEBUG: Found {baselines.length} baselines</div>
+            {baselines.length === 0 ? (
+              <div className="text-xs text-slate-500 p-4 bg-gradient-to-r from-slate-50 to-green-50 rounded-xl border-2 border-dashed border-slate-200">
+                📸 Create baselines to start visual testing
               </div>
-            ))}
+            ) : (
+              baselines.map((baseline) => (
+                <div key={baseline.id} className="p-4 border border-slate-200 rounded-xl hover:border-green-300 hover:shadow-md transition-all duration-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-semibold text-slate-900">{baseline.name}</div>
+                    <button
+                      onClick={() => {
+                        console.log('View button clicked for baseline:', baseline.id);
+                        setSelectedBaselineId(baseline.id);
+                        setShowBaselineImage(true);
+                      }}
+                      className="bg-green-500 text-white px-3 py-1 rounded-lg text-sm font-medium hover:bg-green-600 transition-colors shadow-md"
+                    >
+                      👁️ View
+                    </button>
+                  </div>
+                  <div className="text-xs text-slate-600 mt-1">
+                    📐 {baseline.metadata.viewport.width}x{baseline.metadata.viewport.height}
+                  </div>
+                  {baseline.tags && baseline.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {baseline.tags.map((tag, index) => (
+                        <span key={index} className="text-xs bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 px-2 py-1 rounded-full">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -748,6 +769,41 @@ export function VisualTesting() {
               <button
                 onClick={() => setShowAiAnalysis(false)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Baseline Image Modal */}
+      {showBaselineImage && selectedBaselineId && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-4 max-w-[90vw] max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">Baseline Image</h3>
+              <button
+                onClick={() => setShowBaselineImage(false)}
+                className="text-gray-500 hover:text-gray-700 text-xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex justify-center">
+              <img 
+                src={`http://localhost:3000/api/baselines/${selectedBaselineId}/image`}
+                alt="Baseline Image" 
+                className="max-w-full max-h-[70vh] object-contain border border-slate-200 rounded"
+                onError={(e) => {
+                  e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjNmNGY2Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY2NzM4NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBhdmFpbGFibGU8L3RleHQ+PC9zdmc+';
+                }}
+              />
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => setShowBaselineImage(false)}
+                className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
               >
                 Close
               </button>

@@ -16,7 +16,16 @@ export class Baseline implements IBaseline {
     public createdAt: Date,
     public updatedAt: Date,
     public domSnapshot?: string,
-    public tags?: string[]
+    public maskConfig?: {
+      ignoreCSSSelectors?: string[];
+      ignoreRegions?: Array<{x: number, y: number, width: number, height: number}>;
+      freezeAnimations?: boolean;
+      waitTime?: number;
+      disableAnimations?: boolean;
+      blockAds?: boolean;
+      scrollToTriggerLazyLoad?: boolean;
+      stabilityCheck?: boolean;
+    }
   ) {}
 
   static create(data: {
@@ -28,6 +37,16 @@ export class Baseline implements IBaseline {
     url: string;
     domSnapshot?: string;
     tags?: string[];
+    maskConfig?: {
+      ignoreCSSSelectors?: string[];
+      ignoreRegions?: Array<{x: number, y: number, width: number, height: number}>;
+      freezeAnimations?: boolean;
+      waitTime?: number;
+      disableAnimations?: boolean;
+      blockAds?: boolean;
+      scrollToTriggerLazyLoad?: boolean;
+      stabilityCheck?: boolean;
+    };
   }): Baseline {
     const now = new Date();
     return new Baseline(
@@ -45,7 +64,7 @@ export class Baseline implements IBaseline {
       now,
       now,
       data.domSnapshot,
-      data.tags
+      data.maskConfig
     );
   }
 
