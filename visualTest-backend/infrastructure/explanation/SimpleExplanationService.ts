@@ -11,6 +11,7 @@ export interface ExplanationResult {
 export class SimpleExplanationService {
   async generateExplanation(testResult: {
     similarityScore: number;
+    aiConfidence?: number;
     isDifferent: boolean;
     changes: Array<{
       type: string;
@@ -24,7 +25,8 @@ export class SimpleExplanationService {
       const prompt = `Analyze this visual test result and provide a clear explanation:
 
 Test Result:
-- Similarity Score: ${testResult.similarityScore}%
+- Pixel Similarity Score: ${testResult.similarityScore}%
+- AI Confidence: ${testResult.aiConfidence || 'N/A'}%
 - Different: ${testResult.isDifferent}
 - Method: ${testResult.method}
 - URL: ${testResult.url || 'N/A'}

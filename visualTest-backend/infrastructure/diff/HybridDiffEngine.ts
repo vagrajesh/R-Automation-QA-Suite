@@ -117,8 +117,15 @@ export class HybridDiffEngine {
 
       // Step 4: Generate AI explanation
       try {
+        console.log('Generating explanation with data:', {
+          similarityScore: result.pixelAnalysis.similarityScore,
+          aiConfidence: result.confidence,
+          isDifferent: result.isDifferent,
+          method: result.method
+        });
         const aiExplanation = await this.explanationService.generateExplanation({
           similarityScore: result.pixelAnalysis.similarityScore,
+          aiConfidence: result.confidence,
           isDifferent: result.isDifferent,
           changes: result.changes,
           method: result.method,

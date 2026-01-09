@@ -485,13 +485,8 @@ export function VisualTesting() {
                     <div className="mt-1 text-xs text-slate-600">
                       📊 Pixel: {testRun.diffResult.pixelAnalysis.similarityScore.toFixed(2)}% similar
                     </div>
-                    {testRun.diffResult.aiAnalysis && (
-                      <div className="text-xs text-slate-600">
-                        🤖 AI: {testRun.diffResult.aiAnalysis.similarityScore.toFixed(2)}% similar
-                      </div>
-                    )}
                     <div className="text-xs text-slate-500">
-                      🎯 Confidence: {testRun.diffResult.confidence.toFixed(1)}%
+                      🤖 AI Confidence: {testRun.diffResult.confidence.toFixed(1)}%
                     </div>
                     {testRun.diffResult && (
                       <div className="mt-2 flex gap-1">
