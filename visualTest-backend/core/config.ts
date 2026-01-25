@@ -44,4 +44,13 @@ export const appConfig = {
     saveToFilesystem: config.SAVE_TO_FILESYSTEM,
     screenshotsDir: config.SCREENSHOTS_DIR,
   },
+  dynamicContent: {
+    disableAnimations: config.DISABLE_ANIMATIONS,
+    blockAds: config.BLOCK_ADS,
+    scrollToTriggerLazyLoad: config.SCROLL_TO_TRIGGER_LAZY_LOAD,
+    multipleScreenshotsCount: config.MULTIPLE_SCREENSHOTS_COUNT,
+    multipleScreenshotsInterval: config.MULTIPLE_SCREENSHOTS_INTERVAL,
+    stabilityCheckTimeout: config.STABILITY_CHECK_TIMEOUT,
+    networkIdleTimeout: config.NETWORK_IDLE_TIMEOUT,
+  },
 };

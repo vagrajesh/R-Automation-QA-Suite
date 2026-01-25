@@ -27,9 +27,18 @@ export class MongoTestRunRepository implements ITestRunRepository {
   }
 
   async update(id: string, updates: Partial<TestRun>): Promise<TestRun | null> {
+    // Create clean updates without large data but preserve diffResult structure
+    const cleanUpdates = { ...updates };
+    if (cleanUpdates.result) {
+      delete cleanUpdates.result.screenshot;
+      if (cleanUpdates.result.diffResult?.diffImage) {
+        cleanUpdates.result.diffResult.diffImage = 'STORED_IN_FILESYSTEM';
+      }
+    }
+    
     const result = await this.collection.findOneAndUpdate(
       { id },
-      { $set: updates },
+      { $set: cleanUpdates },
       { returnDocument: 'after' }
     );
     return result ? this.toTestRun(result) : null;

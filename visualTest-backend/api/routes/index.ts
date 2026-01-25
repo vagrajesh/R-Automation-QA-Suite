@@ -94,6 +94,7 @@ router.delete('/projects/:id', projectController.delete.bind(projectController))
 router.post('/baselines', upload.single('image'), baselineController.create.bind(baselineController));
 router.get('/projects/:projectId/baselines', baselineController.getByProject.bind(baselineController));
 router.get('/baselines/:id', baselineController.getById.bind(baselineController));
+router.get('/baselines/:id/image', baselineController.getImage.bind(baselineController));
 router.delete('/baselines/:id', baselineController.delete.bind(baselineController));
 
 // Test execution routes (hybrid AI + pixel)
@@ -107,5 +108,6 @@ router.post('/pixel/quick-compare', pixelDiffController.quickCompare.bind(pixelD
 
 // Utility routes
 router.post('/utils/image-to-base64', upload.single('image'), utilityController.convertImageToBase64.bind(utilityController));
+router.get('/screenshots/:type/:filename', utilityController.getScreenshot.bind(utilityController));
 
 export { router as apiRoutes };

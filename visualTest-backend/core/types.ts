@@ -38,6 +38,14 @@ export interface ITestRun {
     url: string;
     viewport: { width: number; height: number };
     waitConditions?: string[];
+    dynamicContent?: {
+      disableAnimations?: boolean;
+      blockAds?: boolean;
+      scrollToTriggerLazyLoad?: boolean;
+      multipleScreenshots?: boolean;
+      stabilityCheck?: boolean;
+      maskSelectors?: string[];
+    };
   };
   retryCount: number;
   maxRetries: number;
@@ -73,10 +81,9 @@ export interface ITestResult {
     diff?: string;
   };
   explanations?: string[];
-  metadata: {
+  metadata?: {
     executionTime: number;
     aiModel?: string;
-    tokensUsed?: number;
-  };
+    tokensUsed?: number;    filePaths?: any;  };
   createdAt: Date;
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Eye, Plus, Play, Clock, CheckCircle, XCircle, Loader, AlertCircle, Upload, Zap } from 'lucide-react';
+import { Eye, Plus, Play, Clock, CheckCircle, XCircle, Loader, AlertCircle, Upload, Zap, Folder, Bot, Search, X } from 'lucide-react';
 import { visualTestingService, type Project, type Baseline, type TestRun } from '../services/visualTestingService';
 
 export function VisualTesting() {
@@ -18,11 +18,41 @@ export function VisualTesting() {
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [showCreateBaseline, setShowCreateBaseline] = useState(false);
   const [showRunTest, setShowRunTest] = useState(false);
+  const [runTestLoading, setRunTestLoading] = useState(false);
   const [showPixelCompare, setShowPixelCompare] = useState(false);
+  const [pixelCompareLoading, setPixelCompareLoading] = useState(false);
   const [showAiAnalysis, setShowAiAnalysis] = useState(false);
   const [selectedAiExplanation, setSelectedAiExplanation] = useState<any>(null);
   const [showDiffImage, setShowDiffImage] = useState(false);
   const [selectedDiffImage, setSelectedDiffImage] = useState<string | null>(null);
+  const [showBaselineImage, setShowBaselineImage] = useState(false);
+  const [selectedBaselineId, setSelectedBaselineId] = useState<string | null>(null);
+
+  // Dynamic content states
+  const [disableAnimations, setDisableAnimations] = useState(false);
+  const [blockAds, setBlockAds] = useState(false);
+  const [scrollToTriggerLazyLoad, setScrollToTriggerLazyLoad] = useState(false);
+  const [multipleScreenshots, setMultipleScreenshots] = useState(false);
+  const [stabilityCheck, setStabilityCheck] = useState(false);
+  const [maskSelectors, setMaskSelectors] = useState<string>('');
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+
+  // Dynamic content states for baseline
+  const [baselineDisableAnimations, setBaselineDisableAnimations] = useState(false);
+  const [baselineBlockAds, setBaselineBlockAds] = useState(false);
+  const [baselineScrollToTriggerLazyLoad, setBaselineScrollToTriggerLazyLoad] = useState(false);
+  const [baselineMaskSelectors, setBaselineMaskSelectors] = useState<string>('');
+  const [baselineShowAdvancedSettings, setBaselineShowAdvancedSettings] = useState(false);
+
+  const resetDynamicContentState = () => {
+    setDisableAnimations(false);
+    setBlockAds(false);
+    setScrollToTriggerLazyLoad(false);
+    setMultipleScreenshots(false);
+    setStabilityCheck(false);
+    setMaskSelectors('');
+    setShowAdvancedSettings(false);
+  };
 
   useEffect(() => {
     checkConnection();
@@ -100,6 +130,15 @@ export function VisualTesting() {
     const formData = new FormData(e.currentTarget);
     const projectId = formData.get('projectId') as string;
     
+    // Prepare dynamic content configuration for baseline
+    const dynamicContent: any = {};
+    if (baselineDisableAnimations) dynamicContent.disableAnimations = true;
+    if (baselineBlockAds) dynamicContent.blockAds = true;
+    if (baselineScrollToTriggerLazyLoad) dynamicContent.scrollToTriggerLazyLoad = true;
+    if (baselineMaskSelectors.trim()) {
+      dynamicContent.maskSelectors = baselineMaskSelectors.split(',').map(s => s.trim()).filter(s => s);
+    }
+    
     try {
       const baseline = await visualTestingService.createBaseline({
         projectId,
@@ -111,11 +150,20 @@ export function VisualTesting() {
         },
         url: formData.get('url') as string,
         tags: formData.get('tags') ? (formData.get('tags') as string).split(',').map(t => t.trim()) : [],
+        dynamicContent: Object.keys(dynamicContent).length > 0 ? dynamicContent : undefined,
       });
       
       setBaselines([...baselines, baseline]);
       setAllBaselines([...allBaselines, baseline]);
       setShowCreateBaseline(false);
+      
+      // Reset dynamic content state
+      setBaselineDisableAnimations(false);
+      setBaselineBlockAds(false);
+      setBaselineScrollToTriggerLazyLoad(false);
+      setBaselineMaskSelectors('');
+      setBaselineShowAdvancedSettings(false);
+      
       setSuccess('Baseline created successfully');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -129,7 +177,19 @@ export function VisualTesting() {
     const formData = new FormData(e.currentTarget);
     const projectId = formData.get('projectId') as string;
     
+    // Prepare dynamic content configuration
+    const dynamicContent: any = {};
+    if (disableAnimations) dynamicContent.disableAnimations = true;
+    if (blockAds) dynamicContent.blockAds = true;
+    if (scrollToTriggerLazyLoad) dynamicContent.scrollToTriggerLazyLoad = true;
+    if (multipleScreenshots) dynamicContent.multipleScreenshots = true;
+    if (stabilityCheck) dynamicContent.stabilityCheck = true;
+    if (maskSelectors.trim()) {
+      dynamicContent.maskSelectors = maskSelectors.split(',').map(s => s.trim()).filter(s => s);
+    }
+    
     try {
+      setRunTestLoading(true);
       const testResult = await visualTestingService.runTest({
         projectId,
         url: formData.get('url') as string,
@@ -139,16 +199,25 @@ export function VisualTesting() {
           height: Number(formData.get('height')) || 1280,
         },
         priority: (formData.get('priority') as 'HIGH' | 'NORMAL' | 'LOW') || 'NORMAL',
+        dynamicContent: Object.keys(dynamicContent).length > 0 ? {
+          ...dynamicContent,
+          maskSelectors: dynamicContent.maskSelectors
+        } : undefined,
       });
       
       setShowRunTest(false);
       setSuccess(`Test queued successfully (ID: ${testResult.testId})`);
       setTimeout(() => setSuccess(null), 5000);
       
+      // Reset dynamic content state
+      resetDynamicContentState();
+      
       // Poll for test status
       pollTestStatus(testResult.testId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to run test');
+    } finally {
+      setRunTestLoading(false);
     }
   };
 
@@ -160,6 +229,7 @@ export function VisualTesting() {
     const baselineId = formData.get('baselineId') as string;
     
     try {
+      setPixelCompareLoading(true);
       const result = await visualTestingService.pixelCompare({
         projectId,
         baselineId,
@@ -179,10 +249,12 @@ export function VisualTesting() {
       setPixelResults(prev => [result, ...prev]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to compare pixels');
+    } finally {
+      setPixelCompareLoading(false);
     }
   };
   const pollTestStatus = async (testId: string) => {
-    const maxAttempts = 30;
+    const maxAttempts = 60;
     let attempts = 0;
     
     const poll = async () => {
@@ -197,14 +269,31 @@ export function VisualTesting() {
           return [...prev, testRun];
         });
         
-        if (testRun.status === 'COMPLETED' || testRun.status === 'FAILED' || attempts >= maxAttempts) {
+        if (testRun.status === 'COMPLETED') {
+          setSuccess(`Test completed! ${testRun.diffResult?.isDifferent ? 'Differences detected' : 'No differences found'}`);
+          setTimeout(() => setSuccess(null), 5000);
           return;
         }
         
-        attempts++;
-        setTimeout(poll, 2000);
+        if (testRun.status === 'FAILED') {
+          setError(`Test failed: ${testRun.diffResult?.explanation || 'Unknown error'}`);
+          return;
+        }
+        
+        if ((testRun.status === 'RUNNING' || testRun.status === 'QUEUED') && attempts < maxAttempts) {
+          attempts++;
+          setTimeout(poll, 5000);
+        } else if (attempts >= maxAttempts) {
+          setError('Test polling timeout - check backend logs');
+        }
       } catch (err) {
         console.error('Failed to poll test status:', err);
+        if (attempts < maxAttempts) {
+          attempts++;
+          setTimeout(poll, 5000);
+        } else {
+          setError('Failed to get test status - backend may be disconnected');
+        }
       }
     };
     
@@ -269,7 +358,7 @@ export function VisualTesting() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-blue-100 rounded-lg">
-                <Plus className="w-5 h-5 text-blue-600" />
+                <Folder className="w-5 h-5 text-blue-600" />
               </div>
               <h3 className="font-bold text-slate-900 text-lg">Projects</h3>
             </div>
@@ -325,8 +414,17 @@ export function VisualTesting() {
             {baselines.map((baseline) => (
               <div key={baseline.id} className="p-4 border border-slate-200 rounded-xl hover:border-green-300 hover:shadow-md transition-all duration-200">
                 <div className="font-semibold text-slate-900">{baseline.name}</div>
-                <div className="text-xs text-slate-600 mt-1">
-                  📐 {baseline.metadata.viewport.width}x{baseline.metadata.viewport.height}
+                <div className="flex items-center justify-between mt-1">
+                  <div className="text-xs text-slate-600">
+                    📐 {baseline.metadata.viewport.width}x{baseline.metadata.viewport.height}
+                  </div>
+                  <Eye 
+                    className="w-4 h-4 text-green-600 cursor-pointer hover:text-green-800 transition-colors"
+                    onClick={() => {
+                      setSelectedBaselineId(baseline.id);
+                      setShowBaselineImage(true);
+                    }}
+                  />
                 </div>
                 {baseline.tags && baseline.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
@@ -347,12 +445,15 @@ export function VisualTesting() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-purple-100 rounded-lg">
-                <Play className="w-5 h-5 text-purple-600" />
+                <Bot className="w-5 h-5 text-purple-600" />
               </div>
               <h3 className="font-bold text-slate-900 text-lg">AI Visual Test</h3>
             </div>
             <button
-              onClick={() => setShowRunTest(true)}
+              onClick={() => {
+                console.log('AI Visual Test button clicked');
+                setShowRunTest(true);
+              }}
               className="p-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg"
             >
               <Play className="w-4 h-4" />
@@ -384,42 +485,43 @@ export function VisualTesting() {
                     <div className="mt-1 text-xs text-slate-600">
                       📊 Pixel: {testRun.diffResult.pixelAnalysis.similarityScore.toFixed(2)}% similar
                     </div>
-                    {testRun.diffResult.aiAnalysis && (
-                      <div className="text-xs text-slate-600">
-                        🤖 AI: {testRun.diffResult.aiAnalysis.similarityScore.toFixed(2)}% similar
-                      </div>
-                    )}
                     <div className="text-xs text-slate-500">
-                      🎯 Confidence: {testRun.diffResult.confidence.toFixed(1)}%
+                      🤖 AI Confidence: {testRun.diffResult.confidence.toFixed(1)}%
                     </div>
-                    {testRun.diffResult.aiExplanation && (
+                    {testRun.diffResult && (
                       <div className="mt-2 flex gap-1">
-                        <button
-                          onClick={() => {
-                            setSelectedAiExplanation(testRun.diffResult.aiExplanation);
-                            setShowAiAnalysis(true);
-                          }}
-                          className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
-                        >
-                          🤖 View AI Analysis
-                        </button>
-                        {testRun.diffResult.diffImage && (
+                        {testRun.diffResult.aiExplanation && (
                           <button
                             onClick={() => {
-                              setSelectedDiffImage(testRun.diffResult.diffImage);
-                              setShowDiffImage(true);
+                              setSelectedAiExplanation(testRun.diffResult!.aiExplanation);
+                              setShowAiAnalysis(true);
                             }}
-                            className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200 transition-colors"
+                            className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
                           >
-                            🖼️ View Diff
+                            🤖 View AI Analysis
                           </button>
                         )}
+                        <button
+                          onClick={() => {
+                            const diffImageUrl = `http://localhost:3000/api/screenshots/diffs/${testRun.projectId}_${testRun.id}_diff.png`;
+                            setSelectedDiffImage(diffImageUrl);
+                            setShowDiffImage(true);
+                          }}
+                          className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200 transition-colors"
+                        >
+                          🖼️ View Diff
+                        </button>
                       </div>
                     )}
                   </div>
                 )}
               </div>
             ))}
+            {testRuns.length === 0 && (
+              <div className="text-xs text-slate-500 p-4 bg-gradient-to-r from-slate-50 to-purple-50 rounded-xl border-2 border-dashed border-slate-200">
+                🤖 AI visual test results will appear here
+              </div>
+            )}
           </div>
         </div>
 
@@ -428,7 +530,7 @@ export function VisualTesting() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-orange-100 rounded-lg">
-                <Zap className="w-5 h-5 text-orange-600" />
+                <Search className="w-5 h-5 text-orange-600" />
               </div>
               <h3 className="font-bold text-slate-900 text-lg">Pixel Compare</h3>
             </div>
@@ -518,10 +620,11 @@ export function VisualTesting() {
 
       {/* Create Baseline Modal */}
       {showCreateBaseline && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4">Create Baseline</h3>
-            <form onSubmit={handleCreateBaseline} className="space-y-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold mb-4">Create Baseline</h3>
+              <form onSubmit={handleCreateBaseline} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Project</label>
                 <select name="projectId" required className="w-full px-3 py-2 border border-slate-300 rounded-lg">
@@ -559,15 +662,84 @@ export function VisualTesting() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Tags (comma-separated)</label>
                 <input name="tags" placeholder="homepage, desktop" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
               </div>
-              <div className="flex gap-2">
-                <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
-                  Create
+              
+              {/* Advanced Settings for Baseline */}
+              <div className="border-t border-slate-200 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setBaselineShowAdvancedSettings(!baselineShowAdvancedSettings)}
+                  className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-lg transition-all duration-200"
+                >
+                  <span className="text-sm font-medium text-slate-700">Advanced Settings</span>
+                  <div className={`transform transition-transform duration-200 ${baselineShowAdvancedSettings ? 'rotate-180' : ''}`}>
+                    <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                 </button>
-                <button type="button" onClick={() => setShowCreateBaseline(false)} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg hover:bg-slate-300">
-                  Cancel
-                </button>
+                
+                {baselineShowAdvancedSettings && (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex items-center p-2 bg-white rounded border">
+                      <input
+                        type="checkbox"
+                        id="baselineDisableAnimations"
+                        checked={baselineDisableAnimations}
+                        onChange={(e) => setBaselineDisableAnimations(e.target.checked)}
+                        className="h-4 w-4 text-blue-600"
+                      />
+                      <label htmlFor="baselineDisableAnimations" className="ml-2 text-sm text-slate-700">
+                        Disable animations
+                      </label>
+                    </div>
+                    <div className="flex items-center p-2 bg-white rounded border">
+                      <input
+                        type="checkbox"
+                        id="baselineBlockAds"
+                        checked={baselineBlockAds}
+                        onChange={(e) => setBaselineBlockAds(e.target.checked)}
+                        className="h-4 w-4 text-blue-600"
+                      />
+                      <label htmlFor="baselineBlockAds" className="ml-2 text-sm text-slate-700">
+                        Block ads & tracking
+                      </label>
+                    </div>
+                    <div className="flex items-center p-2 bg-white rounded border">
+                      <input
+                        type="checkbox"
+                        id="baselineScrollToTriggerLazyLoad"
+                        checked={baselineScrollToTriggerLazyLoad}
+                        onChange={(e) => setBaselineScrollToTriggerLazyLoad(e.target.checked)}
+                        className="h-4 w-4 text-blue-600"
+                      />
+                      <label htmlFor="baselineScrollToTriggerLazyLoad" className="ml-2 text-sm text-slate-700">
+                        Trigger lazy loading
+                      </label>
+                    </div>
+                    <div className="p-2 bg-white rounded border">
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Mask Selectors</label>
+                      <input
+                        type="text"
+                        value={baselineMaskSelectors}
+                        onChange={(e) => setBaselineMaskSelectors(e.target.value)}
+                        placeholder=".ad-banner, .carousel, #dynamic-content"
+                        className="w-full px-2 py-1 border border-slate-300 rounded text-sm"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">CSS selectors to mask during capture</p>
+                    </div>
+                  </div>
+                )}
               </div>
-            </form>
+                <div className="flex gap-2">
+                  <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                    Create
+                  </button>
+                  <button type="button" onClick={() => setShowCreateBaseline(false)} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg hover:bg-slate-300">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
@@ -575,12 +747,30 @@ export function VisualTesting() {
       {/* Run Test Modal */}
       {showRunTest && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold mb-4">Run Visual Test</h3>
+          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto m-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Run Visual Test</h3>
+              <button
+                onClick={() => { setShowRunTest(false); resetDynamicContentState(); }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
             <form onSubmit={handleRunTest} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Project</label>
-                <select name="projectId" required className="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  <span className="flex items-center">
+                    <Eye className="w-4 h-4 mr-2 text-blue-600" />
+                    Project
+                  </span>
+                </label>
+                <select
+                  name="projectId"
+                  required
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                >
                   <option value="">Select project...</option>
                   {projects.map((project) => (
                     <option key={project.id} value={project.id} selected={selectedProject?.id === project.id}>
@@ -589,9 +779,18 @@ export function VisualTesting() {
                   ))}
                 </select>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Baseline (optional)</label>
-                <select name="baselineId" className="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  <span className="flex items-center">
+                    <Upload className="w-4 h-4 mr-2 text-green-600" />
+                    Baseline (optional)
+                  </span>
+                </label>
+                <select
+                  name="baselineId"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                >
                   <option value="">Select baseline...</option>
                   {allBaselines.map((baseline) => (
                     <option key={baseline.id} value={baseline.id}>
@@ -600,33 +799,164 @@ export function VisualTesting() {
                   ))}
                 </select>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">URL</label>
-                <input name="url" type="url" required className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  <span className="flex items-center">
+                    <Zap className="w-4 h-4 mr-2 text-purple-600" />
+                    Test URL
+                  </span>
+                </label>
+                <input
+                  name="url"
+                  type="url"
+                  required
+                  placeholder="https://example.com"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                />
               </div>
-              <div className="grid grid-cols-2 gap-2">
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Width</label>
-                  <input name="width" type="number" defaultValue="1500" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Viewport Width</label>
+                  <input
+                    name="width"
+                    type="number"
+                    defaultValue="1500"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Height</label>
-                  <input name="height" type="number" defaultValue="1280" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">Viewport Height</label>
+                  <input
+                    name="height"
+                    type="number"
+                    defaultValue="1280"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                  />
                 </div>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
-                <select name="priority" className="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                  <option value="NORMAL">Normal</option>
-                  <option value="HIGH">High</option>
-                  <option value="LOW">Low</option>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Priority</label>
+                <select
+                  name="priority"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-slate-50 hover:bg-white"
+                >
+                  <option value="NORMAL">🟡 Normal</option>
+                  <option value="HIGH">🔴 High</option>
+                  <option value="LOW">🟢 Low</option>
                 </select>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
-                  Run Test
+              
+              {/* Advanced Settings */}
+              <div className="border-t border-slate-200 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+                  className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-lg transition-all duration-200"
+                >
+                  <span className="text-sm font-medium text-slate-700">Advanced Settings</span>
+                  <div className={`transform transition-transform duration-200 ${showAdvancedSettings ? 'rotate-180' : ''}`}>
+                    <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                 </button>
-                <button type="button" onClick={() => setShowRunTest(false)} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg hover:bg-slate-300">
+                
+                {showAdvancedSettings && (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex items-center p-2 bg-white rounded border">
+                      <input
+                        type="checkbox"
+                        id="disableAnimations"
+                        checked={disableAnimations}
+                        onChange={(e) => setDisableAnimations(e.target.checked)}
+                        className="h-4 w-4 text-blue-600"
+                      />
+                      <label htmlFor="disableAnimations" className="ml-2 text-sm text-slate-700">
+                        Disable animations
+                      </label>
+                    </div>
+                    <div className="flex items-center p-2 bg-white rounded border">
+                      <input
+                        type="checkbox"
+                        id="blockAds"
+                        checked={blockAds}
+                        onChange={(e) => setBlockAds(e.target.checked)}
+                        className="h-4 w-4 text-blue-600"
+                      />
+                      <label htmlFor="blockAds" className="ml-2 text-sm text-slate-700">
+                        Block ads & tracking
+                      </label>
+                    </div>
+                    <div className="flex items-center p-2 bg-white rounded border">
+                      <input
+                        type="checkbox"
+                        id="scrollToTriggerLazyLoad"
+                        checked={scrollToTriggerLazyLoad}
+                        onChange={(e) => setScrollToTriggerLazyLoad(e.target.checked)}
+                        className="h-4 w-4 text-blue-600"
+                      />
+                      <label htmlFor="scrollToTriggerLazyLoad" className="ml-2 text-sm text-slate-700">
+                        Trigger lazy loading
+                      </label>
+                    </div>
+                    <div className="flex items-center p-2 bg-white rounded border">
+                      <input
+                        type="checkbox"
+                        id="multipleScreenshots"
+                        checked={multipleScreenshots}
+                        onChange={(e) => setMultipleScreenshots(e.target.checked)}
+                        className="h-4 w-4 text-blue-600"
+                      />
+                      <label htmlFor="multipleScreenshots" className="ml-2 text-sm text-slate-700">
+                        Multiple screenshots
+                      </label>
+                    </div>
+                    <div className="flex items-center p-2 bg-white rounded border">
+                      <input
+                        type="checkbox"
+                        id="stabilityCheck"
+                        checked={stabilityCheck}
+                        onChange={(e) => setStabilityCheck(e.target.checked)}
+                        className="h-4 w-4 text-blue-600"
+                      />
+                      <label htmlFor="stabilityCheck" className="ml-2 text-sm text-slate-700">
+                        Page stability check
+                      </label>
+                    </div>
+                    <div className="p-2 bg-white rounded border">
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Mask Selectors</label>
+                      <input
+                        type="text"
+                        value={maskSelectors}
+                        onChange={(e) => setMaskSelectors(e.target.value)}
+                        placeholder=".ad-banner, .carousel, #dynamic-content"
+                        className="w-full px-2 py-1 border border-slate-300 rounded text-sm"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">CSS selectors to mask during capture</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex gap-2">
+                <button 
+                  type="submit" 
+                  disabled={runTestLoading}
+                  className="flex-1 bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {runTestLoading ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin mr-2" />
+                      Running...
+                    </>
+                  ) : (
+                    'Run Test'
+                  )}
+                </button>
+                <button type="button" onClick={() => { setShowRunTest(false); resetDynamicContentState(); }} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg hover:bg-slate-300">
                   Cancel
                 </button>
               </div>
@@ -682,8 +1012,19 @@ export function VisualTesting() {
                 <input name="threshold" type="number" step="0.01" defaultValue="5" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
               </div>
               <div className="flex gap-2">
-                <button type="submit" className="flex-1 bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700">
-                  Compare
+                <button 
+                  type="submit" 
+                  disabled={pixelCompareLoading}
+                  className="flex-1 bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {pixelCompareLoading ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin mr-2" />
+                      Comparing...
+                    </>
+                  ) : (
+                    'Compare'
+                  )}
                 </button>
                 <button type="button" onClick={() => setShowPixelCompare(false)} className="flex-1 bg-slate-200 text-slate-700 py-2 rounded-lg hover:bg-slate-300">
                   Cancel
@@ -725,7 +1066,7 @@ export function VisualTesting() {
                 <div className="p-4 bg-green-50 rounded-lg border border-green-200">
                   <h4 className="font-semibold text-green-800 mb-2">Recommendations</h4>
                   <ul className="list-disc list-inside space-y-1 text-green-700">
-                    {selectedAiExplanation.recommendations.map((rec, idx) => (
+                    {selectedAiExplanation.recommendations.map((rec: string, idx: number) => (
                       <li key={idx}>{rec}</li>
                     ))}
                   </ul>
@@ -748,6 +1089,41 @@ export function VisualTesting() {
               <button
                 onClick={() => setShowAiAnalysis(false)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Baseline Image Modal */}
+      {showBaselineImage && selectedBaselineId && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-4 max-w-[90vw] max-h-[90vh] overflow-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">Baseline Image</h3>
+              <button
+                onClick={() => setShowBaselineImage(false)}
+                className="text-gray-500 hover:text-gray-700 text-xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex justify-center">
+              <img 
+                src={`http://localhost:3000/api/baselines/${selectedBaselineId}/image`}
+                alt="Baseline Image" 
+                className="max-w-full max-h-[70vh] object-contain border border-slate-200 rounded"
+                onError={(e) => {
+                  e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjNmNGY2Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzY2NzM4NSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIG5vdCBhdmFpbGFibGU8L3RleHQ+PC9zdmc+';
+                }}
+              />
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => setShowBaselineImage(false)}
+                className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700"
               >
                 Close
               </button>

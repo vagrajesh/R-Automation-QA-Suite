@@ -24,7 +24,10 @@ export class TestExecutionService {
     try {
       logger.info(`Executing test: ${testRun.id} for URL: ${testRun.config.url}`);
 
-      // Step 1: Capture screenshot
+      // Step 1: Find matching baseline first to get mask settings
+      const baseline = await this.findMatchingBaseline(testRun);
+      
+      // Step 2: Capture screenshot with test's dynamic content settings
       const result = await this.playwrightService.captureScreenshot(
         testRun.config.url,
         testRun.config.viewport,
@@ -33,25 +36,29 @@ export class TestExecutionService {
           fullPage: true,
           captureDom: true,
           waitTime: 2000,
+          ignoreCSSSelectors: testRun.config.dynamicContent?.maskSelectors,
+          freezeAnimations: testRun.config.dynamicContent?.disableAnimations,
+          dynamicContent: testRun.config.dynamicContent
         }
       );
 
+      // Mask regions are now handled within the screenshot capture
+      const maskRegions = undefined; // No longer needed as separate step
+
       logger.info(`Screenshot captured for test: ${testRun.id}`);
       
-      // Store screenshot result in testRun
+      // Store screenshot result in testRun (without large data for DB)
       testRun.result = {
-        screenshot: result.screenshot,
-        domSnapshot: result.domSnapshot,
+        screenshot: undefined, // Remove for DB
+        domSnapshot: undefined, // Remove for DB
         metadata: result.metadata,
       };
 
-      // Step 2: Find matching baseline for comparison
-      const baseline = await this.findMatchingBaseline(testRun);
-      
+      // Step 3: Run visual diff if baseline exists
       if (baseline) {
         logger.info(`Found baseline for comparison: ${baseline.id}`);
         
-        // Step 3: Run visual diff
+        // Step 4: Run visual diff
         const diffResult = await this.hybridDiffEngine.compareImages(
           baseline.image,
           result.screenshot,
@@ -59,6 +66,7 @@ export class TestExecutionService {
             forceAI: appConfig.ai.forceAI, // Use env variable
             pixelThreshold: appConfig.ai.pixelThreshold,
             aiThreshold: appConfig.ai.aiThreshold,
+            maskRegions,
             context: {
               url: testRun.config.url,
               viewport: testRun.config.viewport,
@@ -101,20 +109,30 @@ export class TestExecutionService {
         // Step 6: Save test result
         await this.testResultRepository.create(testResult);
         
-        // Add result to testRun
-        (testRun as any).testResult = testResult;
-        
-        // Also store the diffResult with aiExplanation
-        (testRun as any).diffResult = diffResult;
-        
-        // Update testRun in database with results
+        // Store essential data including diffResult for database
         testRun.result = {
-          screenshot: result.screenshot,
-          domSnapshot: result.domSnapshot,
-          metadata: result.metadata,
-          testResult: testResult,
-          diffResult: diffResult,
+          metadata: {
+            url: result.metadata.url,
+            viewport: result.metadata.viewport,
+            timestamp: result.metadata.timestamp
+          },
+          status: 'COMPLETED',
+          similarityScore: diffResult.pixelAnalysis.similarityScore,
+          isDifferent: diffResult.isDifferent,
+          diffResult: {
+            isDifferent: diffResult.isDifferent,
+            confidence: diffResult.confidence,
+            method: diffResult.method,
+            explanation: diffResult.explanation,
+            pixelAnalysis: diffResult.pixelAnalysis,
+            aiAnalysis: diffResult.aiAnalysis,
+            aiExplanation: diffResult.aiExplanation,
+            diffImage: 'STORED_IN_FILESYSTEM'
+          }
         };
+        
+        // Also add to testRun object for immediate access
+        (testRun as any).diffResult = testRun.result.diffResult;
         
         logger.info(`Visual diff completed: ${testResult.status} (${diffResult.pixelAnalysis.similarityScore}% similarity)`, {
           filesStored: Object.keys(storedPaths).length > 0,
@@ -139,7 +157,7 @@ export class TestExecutionService {
       logger.info('Test execution debug info', {
         testId: testRun.id,
         url: testRun.config.url,
-        error: error.message
+        error: error instanceof Error ? error.message : String(error)
       });
       throw error;
     }

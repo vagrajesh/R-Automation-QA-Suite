@@ -31,6 +31,14 @@ const envSchema = z.object({
   AI_THRESHOLD: z.string().transform(Number).default('70'),
   SAVE_TO_FILESYSTEM: z.string().transform(val => val === 'true').default('false'),
   SCREENSHOTS_DIR: z.string().default('./screenshots'),
+  // Dynamic content handling
+  DISABLE_ANIMATIONS: z.string().transform(val => val === 'true').default('false'),
+  BLOCK_ADS: z.string().transform(val => val === 'true').default('false'),
+  SCROLL_TO_TRIGGER_LAZY_LOAD: z.string().transform(val => val === 'true').default('false'),
+  MULTIPLE_SCREENSHOTS_COUNT: z.string().transform(Number).default('1'),
+  MULTIPLE_SCREENSHOTS_INTERVAL: z.string().transform(Number).default('1000'),
+  STABILITY_CHECK_TIMEOUT: z.string().transform(Number).default('5000'),
+  NETWORK_IDLE_TIMEOUT: z.string().transform(Number).default('2000'),
 });
 
 export const config = envSchema.parse(process.env);

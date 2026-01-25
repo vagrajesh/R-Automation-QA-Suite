@@ -9,8 +9,13 @@ export const createApp = () => {
   const app = express();
 
   // Security middleware
-  app.use(helmet());
-  app.use(cors());
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+  }));
+  app.use(cors({
+    origin: ['http://localhost:5173', 'http://localhost:3000'],
+    credentials: true
+  }));
 
   // Body parsing
   app.use(express.json({ limit: '10mb' })); // Large limit for base64 images
