@@ -8,6 +8,7 @@ import {
   Menu,
   X,
   Settings as SettingsIcon,
+  ClipboardList,
 } from 'lucide-react';
 import { RequirementAnalysis } from './components/RequirementAnalysis';
 import { Settings } from './components/Settings';
@@ -15,6 +16,7 @@ import { TestCases } from './components/TestCases';
 import { TestCasesGenerator } from './components/TestCasesGenerator';
 import { SwaggerAPI } from './components/SwaggerAPI';
 import { VisualTesting } from './components/VisualTesting';
+import { TestPlan } from './components/TestPlan';
 import { StatusBadge } from './components/StatusBadge';
 import { llmService } from './services/llmService';
 import { LLM_PROVIDERS, type LLMProvider } from './config/llmConfig';
@@ -50,6 +52,11 @@ const menuItems: MenuItem[] = [
     id: 5,
     title: 'Generate No Code',
     icon: <Wand2 className="w-5 h-5" />,
+  },
+  {
+    id: 6,
+    title: 'Test Plan',
+    icon: <ClipboardList className="w-5 h-5" />,
   },
  /* {
     id: 4,
@@ -223,6 +230,8 @@ function App() {
               <SwaggerAPI />
             ) : selectedMenu === 4 ? (
               <VisualTesting />
+            ) : selectedMenu === 6 ? (
+              <TestPlan />
             ) : selectedMenu === 12 ? (
               <TestCases />
             ) : selectedMenu === 13 ? (
