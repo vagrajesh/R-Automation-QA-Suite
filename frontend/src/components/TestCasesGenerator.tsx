@@ -239,7 +239,7 @@ Requirements:
           },
         ],
         temperature: 0.7,
-        max_tokens: provider === 'groq' ? 4096 : 2048,
+        max_tokens: Math.min(8000, numTestCases * 600),
       };
 
       const response = await fetch(url, {
