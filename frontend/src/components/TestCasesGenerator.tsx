@@ -53,7 +53,9 @@ export function TestCasesGenerator() {
   const [selectedProvider, _setSelectedProvider] = useState<LLMProvider>(getPersistentProvider());
   const [selectedModel, _setSelectedModel] = useState(getPersistentModel(selectedProvider));
   const [generatedTestCases, setGeneratedTestCases] = useState<GeneratedTestCase[]>([]);
+  const [generatedServiceNowTestCases, setGeneratedServiceNowTestCases] = useState<any[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingServiceNow, setIsGeneratingServiceNow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [numTestCases, setNumTestCases] = useState(3);
@@ -149,157 +151,38 @@ export function TestCasesGenerator() {
     }
 
     const provider = configuredProviders.includes(selectedProvider) ? selectedProvider : configuredProviders[0];
-    const config = llmService.getConfig(provider);
-
-    if (!config) {
-      setError(`Provider ${provider} is not properly configured`);
-      return;
-    }
 
     setIsGenerating(true);
     setError(null);
     setSuccess(null);
 
     try {
-      const prompt = `You are a QA test case generation expert. Generate ${numTestCases} comprehensive test cases based on the following user story:
-
-STORY ID: ${selectedStory.key}
-TITLE: ${selectedStory.title}
-DESCRIPTION: ${selectedStory.description}
-${selectedStory.acceptanceCriteria ? `ACCEPTANCE CRITERIA:\n${selectedStory.acceptanceCriteria}` : ''}
-STATUS: ${selectedStory.status}
-PRIORITY: ${selectedStory.priority}
-SOURCE: ${selectedStory.source.toUpperCase()}
-
-IMPORTANT: Return ONLY valid JSON with NO markdown formatting, NO code blocks, NO \`\`\` markers. Just raw JSON.
-
-Generate test cases in the following FLAT JSON format (NO NESTED OBJECTS):
-
-{
-  "test_cases": [
-    {
-      "name": "Test Case Name",
-      "short_description": "Brief description",
-      "description": "Detailed test case description",
-      "test_type": "Positive",
-      "priority": "High",
-      "state": "draft",
-      "version": "1.0",
-      "steps": [
-        {
-          "order": 100,
-          "step": "Step description",
-          "expected_result": "Expected outcome",
-          "test_data": "Test data if applicable"
-        }
-      ]
-    }
-  ]
-}
-
-Requirements:
-- Each test case MUST have: name, short_description, description, test_type, priority, state, version, steps
-- short_description and description MUST start with an action verb (Verify, Check, Validate, Test, Ensure, Confirm, etc.)
-- Examples: "Verify user can login with valid credentials", "Check that error message displays", "Validate page loads successfully"
-- NO nested testData or versionData objects - use flat properties only
-- Include steps array with ordered steps (order field: 100, 200, 300, etc.)
-- Each step must have: order, step, expected_result, and test_data fields
-- Priority values: "Critical", "High", "Medium", "Low"
-- test_type values: "Positive", "Negative", "End to End", "Edge Cases"
-- Return valid JSON object with a "test_cases" array containing exactly ${numTestCases} test cases
-- DO NOT wrap the JSON in markdown code blocks (no \`\`\`json)
-- DO NOT add any text before or after the JSON
-- Return ONLY the JSON object`;
-
-      let url = '';
-      let headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-
-      if (provider === 'azure-openai') {
-        const endpoint = config.endpoint.endsWith('/') ? config.endpoint : `${config.endpoint}/`;
-        const deploymentName = (config as any).deploymentName || selectedModel;
-        const apiVersion = (config as any).apiVersion || '2024-02-15-preview';
-        url = `${endpoint}openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
-        headers['api-key'] = config.apiKey;
-      } else {
-        const baseEndpoint = config.endpoint.endsWith('/chat/completions')
-          ? config.endpoint
-          : `${config.endpoint}/chat/completions`;
-        url = baseEndpoint;
-        headers['Authorization'] = `Bearer ${config.apiKey}`;
-      }
-
-      const requestBody = {
-        model: selectedModel,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: Math.min(8000, numTestCases * 600),
-      };
-
-      const response = await fetch(url, {
+      const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
+      const response = await fetch(`${apiBaseUrl}/api/test-cases/generate`, {
         method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          story: selectedStory,
+          numTestCases,
+          provider,
+          model: selectedModel,
+        }),
       });
 
       if (!response.ok) {
-        let errorDetail = response.statusText;
-        try {
-          const errorBody = await response.json();
-          errorDetail = errorBody.error?.message || errorBody.message || JSON.stringify(errorBody).substring(0, 200);
-        } catch {
-          try {
-            errorDetail = await response.text();
-          } catch {}
-        }
-        throw new Error(`LLM API error (${response.status}): ${errorDetail}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API error (${response.status})`);
       }
 
-      const data = await response.json() as { choices: Array<{ message: { content: string } }> };
-      const content = data.choices[0]?.message?.content || '';
+      const data = await response.json();
+      const testCases = data.testCases;
 
-      if (!content) {
-        throw new Error('Empty response from LLM - no content generated');
-      }
-
-      const extractAndParseJSON = (text: string) => {
-        let cleanText = text.replace(/^```[\w]*\n/m, '').replace(/\n```\s*$/m, '').trim();
-        try {
-          const parsed = JSON.parse(cleanText);
-          if (parsed.test_cases && Array.isArray(parsed.test_cases) && parsed.test_cases.length > 0) {
-            return parsed;
-          }
-        } catch {}
-
-        try {
-          const match = cleanText.match(/"test_cases"\s*:\s*(\[[\s\S]*\])/);
-          if (match && match[1]) {
-            const arrayStr = match[1];
-            const testCasesArray = JSON.parse(arrayStr);
-            if (Array.isArray(testCasesArray) && testCasesArray.length > 0) {
-              return { test_cases: testCasesArray };
-            }
-          }
-        } catch {}
-
-        throw new Error('Could not extract valid JSON with test_cases from response');
-      };
-
-      const parsedResponse = extractAndParseJSON(content);
-      const testCases = parsedResponse.test_cases;
-      
       if (!Array.isArray(testCases) || testCases.length === 0) {
-        throw new Error('No test cases found in response');
+        throw new Error('No test cases returned from API');
       }
 
-      console.log('[TestCases] Successfully extracted test cases:', testCases.length);
-      console.log('[TestCases] First test case structure:', JSON.stringify(testCases[0], null, 2));
+      console.log('[TestCases] Successfully received test cases:', testCases.length);
 
       const formattedTestCases = testCases.map((tc, idx) => ({
         ...tc,
@@ -313,6 +196,66 @@ Requirements:
       setError(`Failed to generate test cases: ${errorMessage}`);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const generateServiceNowTestCases = async () => {
+    if (!selectedStory) {
+      setError('Please select a story to generate test cases');
+      return;
+    }
+
+    if (configuredProviders.length === 0) {
+      setError('No LLM providers configured. Please configure at least one provider in Settings.');
+      return;
+    }
+
+    const provider = configuredProviders.includes(selectedProvider) ? selectedProvider : configuredProviders[0];
+
+    setIsGeneratingServiceNow(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
+      const response = await fetch(`${apiBaseUrl}/api/test-cases/generate-servicenow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          story: selectedStory,
+          numTestCases,
+          provider,
+          model: selectedModel,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `API error (${response.status})`);
+      }
+
+      const data = await response.json();
+      const testCases = data.testCases;
+
+      if (!Array.isArray(testCases) || testCases.length === 0) {
+        throw new Error('No test cases returned from API');
+      }
+
+      console.log('[ServiceNow TestCases] Successfully received test cases:', testCases.length);
+
+      const formattedTestCases = testCases.map((tc, idx) => ({
+        ...tc,
+        id: `sn-gen-${Date.now()}-${idx}`,
+      }));
+
+      setGeneratedServiceNowTestCases(formattedTestCases);
+      setSuccess(`Successfully generated ${formattedTestCases.length} ServiceNow AI test cases!`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(`Failed to generate ServiceNow test cases: ${errorMessage}`);
+    } finally {
+      setIsGeneratingServiceNow(false);
     }
   };
 
@@ -549,7 +492,7 @@ Requirements:
                 <button
                   onClick={generateTestCases}
                   disabled={isGenerating || !selectedStory || configuredProviders.length === 0}
-                  className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors font-semibold flex items-center justify-center gap-2 mt-6"
+                  className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors font-semibold flex items-center justify-center gap-2"
                 >
                   {isGenerating ? (
                     <>
@@ -560,6 +503,24 @@ Requirements:
                     <>
                       <Sparkles className="w-4 h-4" />
                       Generate Test Cases
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={generateServiceNowTestCases}
+                  disabled={isGeneratingServiceNow || !selectedStory || configuredProviders.length === 0}
+                  className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors font-semibold flex items-center justify-center gap-2 mt-3"
+                >
+                  {isGeneratingServiceNow ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Generate ServiceNow AI Test Cases
                     </>
                   )}
                 </button>
@@ -617,8 +578,8 @@ Requirements:
                           onClick={() => setExpandedTestCaseId(expandedTestCaseId === testCase.id ? null : testCase.id)}
                         />
                       </td>
-                      <td className="px-4 py-3 font-semibold text-slate-900 max-w-xs truncate">{testCase.name}</td>
-                      <td className="px-4 py-3 text-slate-600 max-w-sm truncate">{testCase.short_description}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{testCase.name}</td>
+                      <td className="px-4 py-3 text-slate-600">{testCase.short_description}</td>
                       <td className="px-4 py-3">
                         <span className="px-2 py-1 text-xs font-semibold rounded bg-blue-100 text-blue-700 border border-blue-300 inline-block">
                           {testCase.test_type}
@@ -632,10 +593,10 @@ Requirements:
                       <td className="px-4 py-3 text-slate-600 font-mono text-sm" title={selectedStory?.key}>
                         {selectedStory?.key || '—'}
                       </td>
-                      <td className="px-4 py-3 text-slate-600 max-w-xs truncate" title={selectedStory?.epicKey}>
+                      <td className="px-4 py-3 text-slate-600 font-mono text-sm" title={selectedStory?.epicKey}>
                         {selectedStory?.epicKey || '—'}
                       </td>
-                      <td className="px-4 py-3 text-slate-600 max-w-sm truncate" title={selectedStory?.epicTitle}>
+                      <td className="px-4 py-3 text-slate-600" title={selectedStory?.epicTitle}>
                         {selectedStory?.epicTitle || '—'}
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -753,6 +714,107 @@ Requirements:
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {generatedServiceNowTestCases.length > 0 && (
+        <div className="bg-white rounded-lg shadow-md border border-slate-200 p-6 space-y-4">
+          <h3 className="font-semibold text-slate-900">Generated ServiceNow AI Test Cases ({generatedServiceNowTestCases.length})</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-green-100 border-b border-green-300">
+                <tr>
+                  <th className="px-4 py-3 text-center w-10"></th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Test Case Name</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Description</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Type</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Priority</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Version</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">State</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Story ID</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Epic Number</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-700">Epic Description</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {generatedServiceNowTestCases.map((testCase) => (
+                  <React.Fragment key={testCase.id}>
+                    <tr className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 text-center cursor-pointer">
+                        <ChevronDown
+                          className={`w-5 h-5 text-slate-400 transition-transform inline ${
+                            expandedTestCaseId === testCase.id ? 'rotate-180' : ''
+                          }`}
+                          onClick={() => setExpandedTestCaseId(expandedTestCaseId === testCase.id ? null : testCase.id)}
+                        />
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{testCase.testData?.name}</td>
+                      <td className="px-4 py-3 text-slate-600">{testCase.testData?.short_description}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-1 text-xs font-semibold rounded bg-purple-100 text-purple-700 border border-purple-300 inline-block">
+                          {testCase.testData?.test_type}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-1 text-xs font-semibold rounded bg-orange-100 text-orange-700 border border-orange-300 inline-block">
+                          {testCase.testData?.priority}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm font-mono text-slate-700">{testCase.versionData?.version || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-1 text-xs font-semibold rounded bg-slate-100 text-slate-700 border border-slate-300 inline-block">
+                          {testCase.versionData?.state || '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-600 font-mono text-sm">{selectedStory?.key || '—'}</td>
+                      <td className="px-4 py-3 text-slate-600 max-w-xs truncate">{selectedStory?.epicKey || '—'}</td>
+                      <td className="px-4 py-3 text-slate-600 max-w-sm truncate">{selectedStory?.epicTitle || '—'}</td>
+                    </tr>
+
+                    {expandedTestCaseId === testCase.id && (
+                      <tr className="bg-green-50 border-l-4 border-green-500">
+                        <td colSpan={10} className="px-4 py-4">
+                          <div className="space-y-6">
+                            {testCase.stepsData && testCase.stepsData.length > 0 && (
+                              <div className="space-y-3">
+                                <h4 className="font-bold text-slate-900 text-md border-b-2 border-green-500 pb-2">Test Steps ({testCase.stepsData.length})</h4>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead className="bg-slate-200 border border-slate-300">
+                                      <tr>
+                                        <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300 w-16">Step #</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300">Step Description</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300">Expected Result</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-slate-800 border border-slate-300 w-32">Test Data</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-300">
+                                      {testCase.stepsData
+                                        .sort((a: any, b: any) => a.order - b.order)
+                                        .map((step: any, idx: number) => (
+                                          <tr key={idx} className="bg-white hover:bg-slate-50 border border-slate-300">
+                                            <td className="px-3 py-2 text-slate-700 font-bold border border-slate-300 bg-slate-50">{step.order}</td>
+                                            <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal">{step.step}</td>
+                                            <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal">{step.expected_result}</td>
+                                            <td className="px-3 py-2 text-slate-600 border border-slate-300 whitespace-normal text-xs bg-slate-50 font-mono">
+                                              {step.test_data || '—'}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

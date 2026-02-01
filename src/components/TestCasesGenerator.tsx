@@ -197,8 +197,8 @@ Generate test cases in the following JSON format:
     {
       "testData": {
         "name": "Test Case Name",
-        "short_description": "Brief description",
-        "description": "Detailed test case description",
+        "short_description": "Detailed description of Test Case",
+        "description": "Detailed description of test case",
         "test_type": "Positive",
         "priority": "High",
         "state": "draft"
@@ -721,8 +721,8 @@ Requirements:
                           }`}
                         />
                       </td>
-                      <td className="px-4 py-3 font-semibold text-slate-900 max-w-xs truncate">{testCase.testData?.name || testCase.name || 'Unnamed Test'}</td>
-                      <td className="px-4 py-3 text-slate-600 max-w-sm truncate">{testCase.testData?.short_description || 'No description'}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{testCase.testData?.name || testCase.name || 'Unnamed Test'}</td>
+                      <td className="px-4 py-3 text-slate-600">{testCase.testData?.short_description || 'No description'}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 text-xs font-semibold rounded border inline-block ${getTestTypeColor(testCase.testData?.test_type || testCase.test_type || 'Manual')}`}>
                           {testCase.testData?.test_type || testCase.test_type || 'Manual'}
@@ -739,9 +739,9 @@ Requirements:
                           {testCase.testData?.state || 'draft'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-sm font-semibold text-slate-900 max-w-xs truncate">{selectedStory?.key || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600 max-w-xs truncate">{selectedStory?.epicKey || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-slate-600 max-w-sm truncate" title={selectedStory?.epicTitle}>{selectedStory?.epicTitle || '-'}</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-slate-900">{selectedStory?.key || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">{selectedStory?.epicKey || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600" title={selectedStory?.epicTitle}>{selectedStory?.epicTitle || '-'}</td>
                       <td className="px-4 py-3 text-center">
                         <button
                           onClick={(e) => {

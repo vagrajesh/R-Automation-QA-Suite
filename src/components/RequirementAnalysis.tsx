@@ -42,12 +42,16 @@ export function RequirementAnalysis() {
   );
 
   const handleUserStoryAnalysis = async () => {
+    console.log('[User Story Analysis] Button clicked');
+    
     if (!selectedStory) {
+      console.log('[User Story Analysis] No story selected');
       setError('Please select a story to analyze');
       return;
     }
 
     try {
+      console.log('[User Story Analysis] Starting analysis for story:', selectedStory.key);
       setIsAnalyzing(true);
       setError(null);
       setSuccess(null);
@@ -56,171 +60,55 @@ export function RequirementAnalysis() {
       // Get configured providers from LLMService
       const { llmService } = await import('../services/llmService');
       const configuredProviders = llmService.getConfiguredProviders();
+      console.log('[User Story Analysis] Configured providers:', configuredProviders);
 
       if (configuredProviders.length === 0) {
+        console.log('[User Story Analysis] No providers configured');
         setError('No LLM providers configured. Please configure at least one provider in Settings.');
         return;
       }
 
       const provider = configuredProviders[0];
       const config = llmService.getConfig(provider);
+      console.log('[User Story Analysis] Using provider:', provider, 'with model:', config?.model);
 
       if (!config) {
+        console.log('[User Story Analysis] Provider config not found');
         setError(`Provider ${provider} is not properly configured`);
         return;
       }
 
-      const acceptanceCriteriaText = selectedStory.acceptanceCriteria
-        ? parseAcceptanceCriteria(selectedStory.acceptanceCriteria)
-            .map((criterion) => `• ${criterion}`)
-            .join('\n')
-        : 'No acceptance criteria provided';
-
-      const prompt = `You are an expert QA analyst specializing in user story quality assessment. Review the following user story and provide a comprehensive analysis using the INVEST methodology.
-
-USER STORY DETAILS:
-================
-Story ID: ${selectedStory.key}
-Title: ${selectedStory.title}
-Description: ${selectedStory.description}
-
-Acceptance Criteria:
-${acceptanceCriteriaText}
-
-Status: ${selectedStory.status}
-Priority: ${selectedStory.priority}
-${selectedStory.epicKey ? `Epic Number: ${selectedStory.epicKey}` : ''}
-${selectedStory.epicTitle ? `Epic Title: ${selectedStory.epicTitle}` : ''}
-
-ANALYSIS REQUIREMENTS:
-====================
-Analyze this user story against the INVEST methodology framework with the following criteria:
-
-1. INDEPENDENT
-   - Is the story independent from other stories?
-   - Can it be developed without dependencies?
-
-2. NEGOTIABLE
-   - Are the details open to discussion?
-   - Is there flexibility in implementation approach?
-
-3. VALUABLE
-   - Does it deliver clear value to the user/business?
-   - Is the value proposition clear?
-
-4. ESTIMABLE
-   - Can the work be estimated?
-   - Are requirements clear enough for estimation?
-
-5. SMALL
-   - Can it be completed within one sprint?
-   - Is the scope appropriately sized?
-
-6. TESTABLE
-   - Are acceptance criteria clearly testable?
-   - Can success be objectively verified?
-
-Please provide:
-1. A brief score (0-10) for each INVEST criterion
-2. Current gaps or issues in the user story
-3. Specific recommendations for improvement
-4. Any missing acceptance criteria that should be added
-5. Overall assessment and priority for refinement
-
-Format your response in a clear, structured manner with sections for each criterion.`;
-
-      // Make API call to LLM
-      let url = '';
-      let headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-
-      if (provider === 'azure-openai') {
-        const endpoint = config.endpoint.endsWith('/') ? config.endpoint : `${config.endpoint}/`;
-        const deploymentName = (config as any).deploymentName || config.model;
-        const apiVersion = (config as any).apiVersion || '2024-02-15-preview';
-        url = `${endpoint}openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
-        headers['api-key'] = config.apiKey;
-      } else if (provider === 'openai') {
-        url = 'https://api.openai.com/v1/chat/completions';
-        headers['Authorization'] = `Bearer ${config.apiKey}`;
-      } else if (provider === 'groq') {
-        const baseEndpoint = config.endpoint.endsWith('/chat/completions')
-          ? config.endpoint
-          : `${config.endpoint}/chat/completions`;
-        url = baseEndpoint;
-        headers['Authorization'] = `Bearer ${config.apiKey}`;
-      } else if (provider === 'claude') {
-        url = 'https://api.anthropic.com/v1/messages';
-        headers['x-api-key'] = config.apiKey;
-        headers['anthropic-version'] = '2023-06-01';
-      } else if (provider === 'testleaf') {
-        const endpoint = config.endpoint.endsWith('/') ? config.endpoint : `${config.endpoint}/`;
-        url = `${endpoint}chat/completions`;
-        headers['Authorization'] = `Bearer ${config.apiKey}`;
-      } else {
-        throw new Error(`Unknown provider: ${provider}`);
-      }
-
-      // Prepare request body based on provider
-      let body: any;
-
-      if (provider === 'claude') {
-        body = JSON.stringify({
-          model: config.model,
-          max_tokens: 2048,
-          messages: [
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-        });
-      } else {
-        body = JSON.stringify({
-          model: config.model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert QA analyst specializing in user story quality assessment using INVEST methodology.',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          temperature: 0.7,
-          max_tokens: 2048,
-        });
-      }
-
-      const response = await fetch(url, {
+      // Call backend API instead of direct LLM
+      console.log('[User Story Analysis] Calling /api/user-story/analyze');
+      const response = await fetch('/api/user-story/analyze', {
         method: 'POST',
-        headers,
-        body,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          story: selectedStory,
+          provider,
+          model: config.model,
+        }),
       });
 
+      console.log('[User Story Analysis] Response status:', response.status);
+
       if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`LLM API error: ${response.statusText} - ${errorData}`);
+        const errorData = await response.json();
+        console.log('[User Story Analysis] API error:', errorData);
+        throw new Error(errorData.error || 'Analysis failed');
       }
 
       const data = await response.json();
-      let analysis = '';
-
-      // Extract response based on provider
-      if (provider === 'claude') {
-        analysis = data.content[0].text;
-      } else {
-        analysis = data.choices[0].message.content;
-      }
-
-      setAnalysisResult(analysis);
+      console.log('[User Story Analysis] Analysis complete, setting result');
+      setAnalysisResult(data.analysis);
       setSuccess('User story analysis completed successfully');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Analysis failed';
+      console.error('[User Story Analysis] Error:', err);
       setError(message);
-      console.error('Error analyzing user story:', err);
     } finally {
       setIsAnalyzing(false);
     }

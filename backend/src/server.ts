@@ -387,6 +387,264 @@ function splitAndFormatAssertions(assertionText: string): string[] {
 }
 
 /**
+ * POST /api/test-cases/generate
+ * Generate test cases from story using LLM
+ */
+app.post('/api/test-cases/generate', async (req: Request, res: Response) => {
+  try {
+    const { story, numTestCases, provider, model } = req.body;
+
+    if (!story || !numTestCases) {
+      return res.status(400).json({ error: 'story and numTestCases are required' });
+    }
+
+    const prompt = `You are a QA test case generation expert. Generate ${numTestCases} comprehensive test cases based on the following user story:
+
+STORY ID: ${story.key}
+TITLE: ${story.title}
+DESCRIPTION: ${story.description}
+${story.acceptanceCriteria ? `ACCEPTANCE CRITERIA:\n${story.acceptanceCriteria}` : ''}
+STATUS: ${story.status}
+PRIORITY: ${story.priority}
+SOURCE: ${story.source.toUpperCase()}
+
+IMPORTANT: Return ONLY valid JSON with NO markdown formatting, NO code blocks, NO \`\`\` markers. Just raw JSON.
+
+Generate test cases in the following FLAT JSON format (NO NESTED OBJECTS):
+
+{
+  "test_cases": [
+    {
+      "name": "Test Case Name",
+      "short_description": "Detailed description of Test Case",
+      "description": "Detailed description of Test Case",
+      "test_type": "Positive",
+      "priority": "High",
+      "state": "draft",
+      "version": "1.0",
+      "steps": [
+        {
+          "order": 100,
+          "step": "Step description",
+          "expected_result": "Expected outcome",
+          "test_data": "Test data if applicable"
+        }
+      ]
+    }
+  ]
+}
+
+Requirements:
+- Each test case MUST have: name, short_description, description, test_type, priority, state, version, steps
+- short_description and description MUST start with an action verb (Verify, Check, Validate, Test, Ensure, Confirm, etc.)
+- Examples: "Verify user can login with valid credentials", "Check that error message displays", "Validate page loads successfully"
+- NO nested testData or versionData objects - use flat properties only
+- Include steps array with ordered steps (order field: 100, 200, 300, etc.)
+- Each step must have: order, step, expected_result, and test_data fields
+- Priority values: "Critical", "High", "Medium", "Low"
+- test_type values: "Positive", "Negative", "End to End", "Edge Cases"
+- Return valid JSON object with a "test_cases" array containing exactly ${numTestCases} test cases
+- DO NOT wrap the JSON in markdown code blocks (no \`\`\`json)
+- DO NOT add any text before or after the JSON
+- Return ONLY the JSON object`;
+
+    let url = '';
+    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    if (provider === 'azure-openai') {
+      const endpoint = process.env.VITE_AZURE_OPENAI_API_ENDPOINT;
+      const apiKey = process.env.VITE_AZURE_OPENAI_API_KEY;
+      const deploymentName = process.env.VITE_AZURE_OPENAI_DEPLOYMENT_NAME || model;
+      const apiVersion = process.env.VITE_AZURE_OPENAI_API_VERSION || '2024-02-15-preview';
+
+      if (!endpoint || !apiKey) {
+        return res.status(500).json({ error: 'Azure OpenAI not configured' });
+      }
+
+      const baseUrl = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
+      url = `${baseUrl}openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
+      headers['api-key'] = apiKey;
+    } else if (provider === 'openai') {
+      const apiKey = process.env.VITE_OPENAI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'OpenAI not configured' });
+      }
+      url = 'https://api.openai.com/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    } else if (provider === 'groq') {
+      const apiKey = process.env.VITE_GROQ_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'Groq not configured' });
+      }
+      url = 'https://api.groq.com/openai/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    } else {
+      return res.status(400).json({ error: `Provider ${provider} not supported` });
+    }
+
+    const response = await axios.post(
+      url,
+      {
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: Math.min(8000, numTestCases * 600),
+      },
+      { headers, timeout: 60000 }
+    );
+
+    const content = response.data.choices[0]?.message?.content;
+    if (!content) {
+      return res.status(500).json({ error: 'Empty response from LLM' });
+    }
+
+    const cleanText = content.replace(/^```[\w]*\n/m, '').replace(/\n```\s*$/m, '').trim();
+    const parsed = JSON.parse(cleanText);
+
+    if (!parsed.test_cases || !Array.isArray(parsed.test_cases)) {
+      return res.status(500).json({ error: 'Invalid response format from LLM' });
+    }
+
+    return res.json({ testCases: parsed.test_cases });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return res.status(500).json({ error: `Test case generation failed: ${errorMessage}` });
+  }
+});
+
+/**
+ * POST /api/test-cases/generate-servicenow
+ * Generate ServiceNow AI test cases with nested format
+ */
+app.post('/api/test-cases/generate-servicenow', async (req: Request, res: Response) => {
+  try {
+    const { story, numTestCases, provider, model } = req.body;
+
+    if (!story || !numTestCases) {
+      return res.status(400).json({ error: 'story and numTestCases are required' });
+    }
+
+    const prompt = `You are a ServiceNow QA test case generation expert. Generate ${numTestCases} comprehensive test cases based on the following user story:
+
+STORY ID: ${story.key}
+TITLE: ${story.title}
+DESCRIPTION: ${story.description}
+${story.acceptanceCriteria ? `ACCEPTANCE CRITERIA:\n${story.acceptanceCriteria}` : ''}
+STATUS: ${story.status}
+PRIORITY: ${story.priority}
+SOURCE: ${story.source.toUpperCase()}
+
+IMPORTANT: Return ONLY valid JSON with NO markdown formatting, NO code blocks, NO \`\`\` markers. Just raw JSON.
+
+Generate test cases in the following NESTED JSON format:
+
+{
+  "test_cases": [
+    {
+      "testData": {
+        "name": "Test Case Name",
+        "short_description": "Detailed description of Test Case",
+        "description": "description of Test Case",
+        "test_type": "functional",
+        "priority": "High",
+        "state": "draft"
+      },
+      "versionData": {
+        "version": "1.0",
+        "state": "draft",
+        "short_description": "Same as testData short_description",
+        "description": "Version description",
+        "priority": "High"
+      },
+      "stepsData": [
+        {
+          "order": 100,
+          "step": "Step description",
+          "expected_result": "Expected outcome",
+          "test_data": "Test data if applicable",
+          "description": "Step description details"
+        }
+      ]
+    }
+  ]
+}
+
+Requirements:
+- Each test case MUST have: testData, versionData, stepsData
+- short_description MUST start with an action verb (Verify, Check, Validate, Test, Ensure, Confirm, etc.)
+- test_type values: "functional", "integration", "regression", "smoke"
+- Priority values: "Critical", "High", "Medium", "Low"
+- stepsData array with ordered steps (order field: 100, 200, 300, etc.)
+- Each step must have: order, step, expected_result, test_data, description
+- Return valid JSON object with a "test_cases" array containing exactly ${numTestCases} test cases
+- DO NOT wrap the JSON in markdown code blocks
+- Return ONLY the JSON object`;
+
+    let url = '';
+    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    if (provider === 'azure-openai') {
+      const endpoint = process.env.VITE_AZURE_OPENAI_API_ENDPOINT;
+      const apiKey = process.env.VITE_AZURE_OPENAI_API_KEY;
+      const deploymentName = process.env.VITE_AZURE_OPENAI_DEPLOYMENT_NAME || model;
+      const apiVersion = process.env.VITE_AZURE_OPENAI_API_VERSION || '2024-02-15-preview';
+
+      if (!endpoint || !apiKey) {
+        return res.status(500).json({ error: 'Azure OpenAI not configured' });
+      }
+
+      const baseUrl = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
+      url = `${baseUrl}openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
+      headers['api-key'] = apiKey;
+    } else if (provider === 'openai') {
+      const apiKey = process.env.VITE_OPENAI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'OpenAI not configured' });
+      }
+      url = 'https://api.openai.com/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    } else if (provider === 'groq') {
+      const apiKey = process.env.VITE_GROQ_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'Groq not configured' });
+      }
+      url = 'https://api.groq.com/openai/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    } else {
+      return res.status(400).json({ error: `Provider ${provider} not supported` });
+    }
+
+    const response = await axios.post(
+      url,
+      {
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: Math.min(8000, numTestCases * 600),
+      },
+      { headers, timeout: 60000 }
+    );
+
+    const content = response.data.choices[0]?.message?.content;
+    if (!content) {
+      return res.status(500).json({ error: 'Empty response from LLM' });
+    }
+
+    const cleanText = content.replace(/^```[\w]*\n/m, '').replace(/\n```\s*$/m, '').trim();
+    const parsed = JSON.parse(cleanText);
+
+    if (!parsed.test_cases || !Array.isArray(parsed.test_cases)) {
+      return res.status(500).json({ error: 'Invalid response format from LLM' });
+    }
+
+    return res.json({ testCases: parsed.test_cases });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return res.status(500).json({ error: `ServiceNow test case generation failed: ${errorMessage}` });
+  }
+});
+
+/**
  * POST /api/feature-file/generate
  * Generate Gherkin Feature File from test cases with optional LLM enhancement
  */
@@ -508,6 +766,167 @@ app.post('/api/feature-file/generate', async (req: Request, res: Response) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return res.status(500).json({ error: `Feature file generation failed: ${errorMessage}` });
+  }
+});
+
+/**
+ * POST /api/user-story/analyze
+ * Analyze user story quality using INVEST methodology
+ */
+app.post('/api/user-story/analyze', async (req: Request, res: Response) => {
+  try {
+    console.log('[User Story Analyze] Request received');
+    const { story, provider, model } = req.body;
+
+    if (!story) {
+      console.log('[User Story Analyze] Missing story in request');
+      return res.status(400).json({ error: 'story is required' });
+    }
+
+    console.log('[User Story Analyze] Story:', story.key, 'Provider:', provider, 'Model:', model);
+
+    const acceptanceCriteriaText = story.acceptanceCriteria || 'No acceptance criteria provided';
+
+    const prompt = `You are an expert QA analyst specializing in user story quality assessment. Review the following user story and provide a comprehensive analysis using the INVEST methodology.
+
+USER STORY DETAILS:
+================
+Story ID: ${story.key}
+Title: ${story.title}
+Description: ${story.description}
+
+Acceptance Criteria:
+${acceptanceCriteriaText}
+
+Status: ${story.status}
+Priority: ${story.priority}
+${story.epicKey ? `Epic Number: ${story.epicKey}` : ''}
+${story.epicTitle ? `Epic Title: ${story.epicTitle}` : ''}
+
+ANALYSIS REQUIREMENTS:
+====================
+Provide a comprehensive analysis covering:
+
+1. INVEST CRITERIA ASSESSMENT:
+   - Independent: Can this story be developed independently?
+   - Negotiable: Is there room for discussion on implementation details?
+   - Valuable: Does it deliver clear business value?
+   - Estimable: Can the team estimate effort required?
+   - Small: Is the scope manageable for a single iteration?
+   - Testable: Are there clear acceptance criteria?
+
+2. QUALITY ANALYSIS:
+   - Clarity and completeness of requirements
+   - Potential ambiguities or missing information
+   - Adequacy of acceptance criteria
+   - Risk assessment
+
+3. RECOMMENDATIONS:
+   - Suggested improvements to the story
+   - Missing details that should be added
+   - Potential edge cases to consider
+   - Testing considerations
+
+4. OVERALL ASSESSMENT:
+   - Quality rating (Excellent/Good/Fair/Poor)
+   - Readiness for development (Ready/Needs Work/Not Ready)
+   - Key strengths and weaknesses
+
+Please provide a structured, professional analysis.`;
+
+    let url = '';
+    let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    if (provider === 'azure-openai') {
+      const endpoint = process.env.VITE_AZURE_OPENAI_API_ENDPOINT;
+      const apiKey = process.env.VITE_AZURE_OPENAI_API_KEY;
+      const deploymentName = process.env.VITE_AZURE_OPENAI_DEPLOYMENT_NAME || model;
+      const apiVersion = process.env.VITE_AZURE_OPENAI_API_VERSION || '2024-02-15-preview';
+
+      if (!endpoint || !apiKey) {
+        return res.status(500).json({ error: 'Azure OpenAI not configured' });
+      }
+
+      const baseUrl = endpoint.endsWith('/') ? endpoint : `${endpoint}/`;
+      url = `${baseUrl}openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`;
+      headers['api-key'] = apiKey;
+    } else if (provider === 'openai') {
+      const apiKey = process.env.VITE_OPENAI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'OpenAI not configured' });
+      }
+      url = 'https://api.openai.com/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    } else if (provider === 'groq') {
+      const apiKey = process.env.VITE_GROQ_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'Groq not configured' });
+      }
+      url = 'https://api.groq.com/openai/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    } else if (provider === 'claude') {
+      const apiKey = process.env.VITE_CLAUDE_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'Claude not configured' });
+      }
+      url = 'https://api.anthropic.com/v1/messages';
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+
+      // Claude uses different request format
+      const response = await axios.post(
+        url,
+        {
+          model: model || 'claude-3-5-sonnet-20241022',
+          max_tokens: 2048,
+          messages: [{ role: 'user', content: prompt }],
+        },
+        { headers, timeout: 60000 }
+      );
+
+      const analysis = response.data.content[0]?.text;
+      if (!analysis) {
+        return res.status(500).json({ error: 'Empty response from Claude' });
+      }
+
+      return res.json({ analysis });
+    } else {
+      return res.status(400).json({ error: `Provider ${provider} not supported` });
+    }
+
+    // For OpenAI-compatible providers
+    const response = await axios.post(
+      url,
+      {
+        model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert QA analyst specializing in user story quality assessment using INVEST methodology.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 2048,
+      },
+      { headers, timeout: 60000 }
+    );
+
+    const analysis = response.data.choices[0]?.message?.content;
+    if (!analysis) {
+      console.log('[User Story Analyze] Empty response from LLM');
+      return res.status(500).json({ error: 'Empty response from LLM' });
+    }
+
+    console.log('[User Story Analyze] Analysis complete, sending response');
+    return res.json({ analysis });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[User Story Analyze] Error:', errorMessage);
+    return res.status(500).json({ error: `User story analysis failed: ${errorMessage}` });
   }
 });
 
